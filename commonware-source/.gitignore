@@ -1,0 +1,13 @@
+*.swp
+*.DS_Store
+target
+*.vscode
+.idea
+examples/flood/assets
+*/fuzz/artifacts
+*/fuzz/corpus
+*/fuzz/coverage
+*/fuzz/target
+**/quint/_apalache-out/
+**/quint/out*/
+CLAUDE.md

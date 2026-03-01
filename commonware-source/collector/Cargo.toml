@@ -1,0 +1,34 @@
+[package]
+name = "commonware-collector"
+edition.workspace = true
+publish = true
+version.workspace = true
+license.workspace = true
+description = "Collect responses to committable requests."
+readme = "README.md"
+homepage.workspace = true
+repository = "https://github.com/commonwarexyz/monorepo/tree/main/collector"
+documentation = "https://docs.rs/commonware-collector"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+commonware-codec.workspace = true
+commonware-cryptography.workspace = true
+commonware-macros = { workspace = true, features = ["std"] }
+commonware-p2p.workspace = true
+commonware-runtime = { workspace = true, features = ["test-utils"] }
+commonware-stream.workspace = true
+commonware-utils.workspace = true
+prometheus-client.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
+
+[lib]
+bench = false

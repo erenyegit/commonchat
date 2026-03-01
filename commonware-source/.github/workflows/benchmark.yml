@@ -1,0 +1,86 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 10 * * *' # Run at 10:00 UTC every day
+
+permissions:
+  contents: read
+
+jobs:
+  has-new-commit:
+    name: Has New Commit? # Check if there are new commits in the last 24 hours
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Exit early if no new commits
+        id: check-commits
+        run: |
+          count=$(git log --oneline --since '24 hours ago' | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "No new commits found in the last 24 hours"
+            exit 1
+          fi
+
+  publish:
+    name: Publish
+    needs: has-new-commit # Only run if there are new commits
+    runs-on: ubuntu-latest-8
+    timeout-minutes: 720
+    strategy:
+      max-parallel: 1 # Run one package at a time
+      matrix:
+        include:
+          - package: commonware-cryptography
+            cargo_flags: ""
+            file_suffix: ""
+            benchmark_name: "commonware-cryptography"
+          - package: commonware-storage
+            cargo_flags: ""
+            file_suffix: ""
+            benchmark_name: "commonware-storage"
+          - package: commonware-storage
+            cargo_flags: "--features commonware-runtime/iouring-storage" # Additional features can be added here
+            file_suffix: "-features"
+            benchmark_name: "commonware-storage --features"
+          - package: commonware-coding
+            cargo_flags: ""
+            file_suffix: ""
+            benchmark_name: "commonware-coding"
+          - package: commonware-utils
+            cargo_flags: ""
+            file_suffix: ""
+            benchmark_name: "commonware-utils"
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Install nightly Rust toolchain
+        run: rustup toolchain install nightly
+      - name: Run setup
+        uses: ./.github/actions/setup
+      - name: Compile benchmarks
+        run: cargo bench ${{ matrix.cargo_flags }} --no-run
+      - name: Run benchmarks
+        env:
+          RUSTFLAGS: "--cfg full_bench"
+        run: |
+          cargo bench ${{ matrix.cargo_flags }} \
+            --benches -p ${{ matrix.package }} \
+            -- --output-format bencher \
+            | tee "${{ matrix.package }}${{ matrix.file_suffix }}.txt"
+      - name: Publish benchmark result
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        with:
+          name: ${{ matrix.benchmark_name }}
+          tool: 'cargo'
+          output-file-path: "${{ matrix.package }}${{ matrix.file_suffix }}.txt"
+          github-token: ${{ secrets.BENCHMARKS_SECRET }}
+          gh-repository: github.com/commonwarexyz/benchmarks
+          gh-pages-branch: main
+          benchmark-data-dir-path: 'docs'
+          auto-push: true
+          max-items-in-chart: 60

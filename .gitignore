@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build / output
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Rust
+target/
+**/target/
+
+# WASM pkg (optional: commit or build in CI)
+# core/pkg/
+
+# IDE / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+*.log
+
+# Vercel
+.vercel
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Misc
+*.pem
+coverage/
+.cache/

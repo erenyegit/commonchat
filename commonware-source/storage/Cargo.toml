@@ -1,0 +1,135 @@
+[package]
+name = "commonware-storage"
+edition.workspace = true
+publish = true
+version.workspace = true
+license.workspace = true
+description = "Persist and retrieve data from an abstract store."
+readme = "README.md"
+homepage.workspace = true
+repository = "https://github.com/commonwarexyz/monorepo/tree/main/storage"
+documentation = "https://docs.rs/commonware-storage"
+
+[lints]
+workspace = true
+
+[dependencies]
+ahash = { version = "0.8.12", default-features = false }
+anyhow.workspace = true
+arbitrary = { workspace = true, optional = true, features = ["derive"] }
+bytes = { workspace = true, default-features = false }
+cfg-if.workspace = true
+commonware-codec = { workspace = true, default-features = false }
+commonware-cryptography = { workspace = true, default-features = false }
+commonware-macros.workspace = true
+commonware-parallel = { workspace = true, optional = true, features = ["std"] }
+commonware-runtime = { workspace = true, optional = true }
+commonware-utils = { workspace = true, default-features = false }
+futures = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+prometheus-client = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+thiserror.workspace = true
+tracing = { workspace = true, optional = true }
+zstd = { workspace = true, optional = true }
+
+[dev-dependencies]
+commonware-conformance.workspace = true
+commonware-math.workspace = true
+commonware-storage = { path = ".", features = ["std"] }
+criterion.workspace = true
+rand.workspace = true
+rstest.workspace = true
+tracing-subscriber.workspace = true
+
+[features]
+default = [ "std" ]
+std = [
+	"ahash/runtime-rng",
+	"ahash/std",
+	"anyhow/std",
+	"bytes/std",
+	"commonware-codec/std",
+	"commonware-cryptography/std",
+	"commonware-macros/std",
+	"commonware-parallel",
+	"commonware-parallel?/std",
+	"commonware-runtime",
+	"commonware-utils/std",
+	"futures",
+	"futures-util",
+	"prometheus-client",
+	"rayon",
+	"thiserror/std",
+	"tracing",
+	"zstd",
+]
+arbitrary = [
+	"commonware-codec/arbitrary",
+	"commonware-cryptography/arbitrary",
+	"commonware-runtime?/arbitrary",
+	"commonware-utils/arbitrary",
+	"dep:arbitrary",
+]
+fuzzing = []
+test-traits = []
+
+[lib]
+bench = false
+
+[[bench]]
+name = "qmdb_generate"
+harness = false
+path = "src/qmdb/benches/generate_bench.rs"
+required-features = ["test-traits"]
+
+[[bench]]
+name = "qmdb_init"
+harness = false
+path = "src/qmdb/benches/init_bench.rs"
+required-features = ["test-traits"]
+
+[[bench]]
+name="archive"
+harness = false
+path = "src/archive/benches/bench.rs"
+
+[[bench]]
+name="bmt"
+harness = false
+path = "src/bmt/benches/bench.rs"
+
+[[bench]]
+name="freezer"
+harness = false
+path = "src/freezer/benches/bench.rs"
+
+[[bench]]
+name="index"
+harness = false
+path = "src/index/benches/bench.rs"
+
+[[bench]]
+name="journal"
+harness = false
+path = "src/journal/benches/bench.rs"
+
+[[bench]]
+name="mmr"
+harness = false
+path = "src/mmr/benches/bench.rs"
+
+[[bench]]
+name="ordinal"
+harness = false
+path = "src/ordinal/benches/bench.rs"
+
+[[bench]]
+name="metadata"
+harness = false
+path = "src/metadata/benches/bench.rs"
+
+[[bench]]
+name="rmap"
+harness = false
+path = "src/rmap/benches/bench.rs"

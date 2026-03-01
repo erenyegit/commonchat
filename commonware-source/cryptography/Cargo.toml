@@ -1,0 +1,153 @@
+[package]
+name = "commonware-cryptography"
+edition.workspace = true
+publish = true
+version.workspace = true
+license.workspace = true
+description = "Generate keys, sign arbitrary messages, and deterministically verify signatures."
+readme = "README.md"
+homepage.workspace = true
+repository = "https://github.com/commonwarexyz/monorepo/tree/main/cryptography"
+documentation = "https://docs.rs/commonware-cryptography"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true, optional = true }
+arbitrary = { workspace = true, optional = true, features = ["derive"] }
+blake3 = { workspace = true, features = ["zeroize"] }
+blst = { workspace = true, features = ["no-threads"], optional = true }
+bytes.workspace = true
+cfg-if.workspace = true
+commonware-codec.workspace = true
+commonware-macros.workspace = true
+commonware-math.workspace = true
+commonware-parallel.workspace = true
+commonware-utils.workspace = true
+crc-fast = { workspace = true, features = ["std"], optional = true }
+ctutils.workspace = true
+ecdsa.workspace = true
+ed25519-consensus = { workspace = true, default-features = false }
+num-rational = { workspace = true, optional = true }
+num-traits = { workspace = true, optional = true }
+p256 = { workspace = true, features = ["ecdsa"] }
+rand.workspace = true
+rand_chacha.workspace = true
+rand_core.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+x25519-dalek = { workspace = true, features = ["zeroize"] }
+zeroize = { workspace = true, features = ["zeroize_derive"] }
+
+[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
+# aws-lc-rs provides optimized P-256 verification and handshake cipher on x86_64 and aarch64.
+aws-lc-rs.workspace = true
+
+[target.'cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies.chacha20poly1305]
+workspace = true
+default-features = false
+features = ["alloc"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
+# Enable "js" feature when WASM is target
+version = "0.2.15"
+features = ["js"]
+
+[dev-dependencies]
+anyhow.workspace = true
+arbitrary.workspace = true
+commonware-conformance.workspace = true
+commonware-invariants.workspace = true
+commonware-math = { workspace = true, features = ["arbitrary"] }
+crc.workspace = true
+criterion.workspace = true
+rayon.workspace = true
+rstest.workspace = true
+
+[lib]
+bench = false
+
+[features]
+default = [ "std", "blst" ]
+wasm = [ ]  # WASM/tarayıcı: blst (BLS12381) devre dışı, sadece ed25519 vb.
+blst = [ "dep:blst" ]
+blake3-parallel = [ "blake3/rayon", "std" ]
+sha2-asm = [ "sha2/asm" ]
+mocks = [ "std" ]
+arbitrary = [
+	"commonware-codec/arbitrary",
+	"commonware-math/arbitrary",
+	"commonware-utils/arbitrary",
+	"dep:anyhow",
+	"dep:arbitrary",
+	"std",
+]
+std = [
+	"anyhow?/std",
+	"blake3/std",
+	"bytes/std",
+	"chacha20poly1305/getrandom",
+	"chacha20poly1305/std",
+	"commonware-codec/std",
+	"commonware-macros/std",
+	"commonware-math/std",
+	"commonware-parallel/std",
+	"commonware-utils/std",
+	"crc-fast",
+	"crc-fast?/std",
+	"ecdsa/std",
+	"ed25519-consensus/std",
+	"getrandom/std",
+	"num-rational",
+	"num-traits",
+	"num-traits?/std",
+	"p256/std",
+	"rand/std",
+	"rand/std_rng",
+	"rand_chacha/std",
+	"rand_core/std",
+	"sha2/std",
+	"thiserror/std",
+	"zeroize/std",
+]
+
+[[bench]]
+name = "bls12381"
+harness = false
+path = "src/bls12381/benches/bench.rs"
+
+[[bench]]
+name = "ed25519"
+harness = false
+path = "src/ed25519/benches/bench.rs"
+
+[[bench]]
+name = "secp256r1"
+harness = false
+path = "src/secp256r1/benches/bench.rs"
+
+[[bench]]
+name = "sha256"
+harness = false
+path = "src/sha256/benches/bench.rs"
+
+[[bench]]
+name = "blake3"
+harness = false
+path = "src/blake3/benches/bench.rs"
+
+[[bench]]
+name = "lthash"
+harness = false
+path = "src/lthash/benches/bench.rs"
+
+[[bench]]
+name = "handshake"
+harness = false
+path = "src/handshake/benches/bench.rs"
+
+[[bench]]
+name = "bloomfilter"
+harness = false
+path = "src/bloomfilter/benches/bench.rs"
