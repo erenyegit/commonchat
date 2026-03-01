@@ -31,7 +31,7 @@ export function useIdentity() {
 
   const loadStored = useCallback(async () => {
     try {
-      const core = await import("../../src/commonchat-core/commonchat_core.js") as CoreModule;
+      const core = await import("@/src/commonware-lib/commonchat_core.js") as CoreModule;
       coreRef.current = core;
       if (typeof core.default === "function") {
         await core.default();
@@ -63,7 +63,7 @@ export function useIdentity() {
     async (name: string) => {
       const core = coreRef.current;
       if (!core) {
-        const mod = await import("../../src/commonchat-core/commonchat_core.js") as CoreModule;
+        const mod = await import("@/src/commonware-lib/commonchat_core.js") as CoreModule;
         coreRef.current = mod;
         if (typeof mod.default === "function") await mod.default();
       }
@@ -94,7 +94,7 @@ export function useIdentity() {
   const verifySignature = useCallback(
     async (pubKeyHex: string, message: string, signatureHex: string): Promise<boolean> => {
       try {
-        const c = coreRef.current ?? (await import("../../src/commonchat-core/commonchat_core.js") as CoreModule);
+        const c = coreRef.current ?? (await import("@/src/commonware-lib/commonchat_core.js") as CoreModule);
         if (!coreRef.current) coreRef.current = c;
         if (typeof c.default === "function") await c.default();
         return c.verify_signature(pubKeyHex, message, signatureHex);
