@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import { Send } from "lucide-react";
 import { useIdentity } from "./hooks/useIdentity";
 
 const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL || "http://localhost:3001";
+const MESSAGES_STORAGE_KEY = "commonchat_messages";
 
 interface ChatMessage {
   id: string;
@@ -15,6 +17,11 @@ interface ChatMessage {
   peerId: string;
   recipient: string;
   at: number;
+}
+
+function formatTime(at: number): string {
+  const d = new Date(at);
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
 function truncate(s: string, len = 12) {
@@ -66,6 +73,36 @@ function resolveRecipientLabel(
   return peer ? peer.name : truncate(recipientId, 16);
 }
 
+function getPreviousPeers(
+  messages: ChatMessage[],
+  myPeerId: string,
+  onlinePeers: { id: string; name: string; pubKey: string }[]
+): { id: string; name: string; pubKey: string; online: boolean }[] {
+  const peerNames = new Map<string, string>();
+  for (const m of messages) {
+    const other = m.fromMe ? (m.recipient !== "Broadcast" ? m.recipient : null) : m.peerId;
+    if (other && other !== myPeerId) {
+      if (!m.fromMe && m.displayName) peerNames.set(other, m.displayName);
+    }
+  }
+  const seen = new Set<string>();
+  const result: { id: string; name: string; pubKey: string; online: boolean }[] = [];
+  for (const m of messages) {
+    const other = m.fromMe ? (m.recipient !== "Broadcast" ? m.recipient : null) : m.peerId;
+    if (other && other !== myPeerId && !seen.has(other)) {
+      seen.add(other);
+      const online = onlinePeers.find((p) => p.pubKey === other);
+      result.push({
+        id: other,
+        pubKey: other,
+        name: online?.name ?? peerNames.get(other) ?? truncate(other, 12),
+        online: !!online,
+      });
+    }
+  }
+  return result.sort((a, b) => (a.online === b.online ? 0 : a.online ? -1 : 1));
+}
+
 export default function Home() {
   const {
     displayName,
@@ -91,6 +128,39 @@ export default function Home() {
   const [onlinePeers, setOnlinePeers] = useState<{ id: string; name: string; pubKey: string }[]>([]);
   const [relayConnected, setRelayConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const storageKey = peerId ? `${MESSAGES_STORAGE_KEY}_${peerId}` : null;
+
+  useEffect(() => {
+    if (!storageKey || typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ChatMessage[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey || messages.length === 0) return;
+    try {
+      const toStore = messages.slice(-500);
+      localStorage.setItem(storageKey, JSON.stringify(toStore));
+    } catch {
+      // quota or parse error
+    }
+  }, [storageKey, messages]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleInitialize = useCallback(() => {
     const name = operatorName.trim();
@@ -213,6 +283,7 @@ export default function Home() {
     setEditingName(false);
   };
 
+  const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
   const showModal = !isInitialized && isReady && !error;
 
   return (
@@ -324,7 +395,7 @@ export default function Home() {
             <div className="flex-1 overflow-auto p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  Online Peers
+                  Previously talked to
                 </h3>
                 <span
                   className={`h-2 w-2 rounded-full ${
@@ -334,28 +405,33 @@ export default function Home() {
                 />
               </div>
               <ul className="space-y-2">
-                {onlinePeers.length === 0 && (
+                {previousPeers.length === 0 && (
                   <p className="text-xs text-zinc-500">
                     {relayConnected
-                      ? "No other users yet."
+                      ? "No conversations yet."
                       : "Connecting to relay…"}
                   </p>
                 )}
-                {onlinePeers.map((p) => (
+                {previousPeers.map((p) => (
                   <li
                     key={p.id}
                     role="button"
                     tabIndex={0}
                     onClick={() => setSelectedRecipient(p.pubKey)}
                     onKeyDown={(e) => e.key === "Enter" && setSelectedRecipient(p.pubKey)}
-                    title={`To: ${p.name} (${p.pubKey})`}
-                    className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-2 transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
+                    title={`To: ${p.name} (${p.pubKey})${p.online ? " • Online" : ""}`}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
                       selectedRecipient === p.pubKey
                         ? "border-emerald-500/60 bg-emerald-950/20"
                         : "border-zinc-700/50 bg-zinc-800/50"
                     }`}
                   >
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        p.online ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
+                      }`}
+                      title={p.online ? "Online" : "Offline"}
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-zinc-200">{p.name}</p>
                       <p className="truncate text-xs text-zinc-500">{p.pubKey}</p>
@@ -375,53 +451,51 @@ export default function Home() {
               <p className="text-xs text-zinc-500">Messages are signed with Ed25519</p>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="mx-auto max-w-2xl space-y-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6">
+              <div className="mx-auto max-w-2xl space-y-3">
                 {messages.length === 0 && (
                   <p className="text-center text-sm text-zinc-500">
-                    No messages yet. Type below and click &quot;Sign &amp; Send&quot;.
+                    No messages yet. Type below and press Enter or click Send.
                   </p>
                 )}
                 {messages.map((m) => (
                   <div
                     key={m.id}
-                    className={`rounded-lg border ${
-                      m.fromMe
-                        ? "border-emerald-500/30 bg-emerald-950/20"
-                        : "border-zinc-700/50 bg-zinc-900/30"
-                    } p-4 shadow-lg`}
+                    className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
                   >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-medium text-emerald-400/90">
-                        {m.displayName}
-                      </span>
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-md ${
+                        m.fromMe
+                          ? "rounded-br-md bg-emerald-600/90 text-white"
+                          : "rounded-bl-md bg-zinc-700/90 text-zinc-100"
+                      }`}
+                    >
                       <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold ${m.fromMe ? "text-emerald-100" : "text-zinc-300"}`}>
+                          {m.displayName}
+                        </span>
                         {(m.recipient ?? "Broadcast") !== "Broadcast" && (
-                          <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400/90">
-                            End-to-End Encrypted
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${m.fromMe ? "bg-emerald-500/30 text-emerald-100" : "bg-zinc-600/50 text-zinc-400"}`}>
+                            E2E
                           </span>
                         )}
-                        <span className="text-xs text-zinc-500">
-                          {truncate(m.peerId, 16)}
-                        </span>
                       </div>
-                    </div>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      To: {(m.recipient ?? "Broadcast") === "Broadcast" ? "Broadcast (Everyone)" : truncate(m.recipient ?? "", 24)}
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm text-zinc-200">
-                      {m.text}
-                    </p>
-                    <div className="mt-3 rounded border border-zinc-700/50 bg-zinc-900/50 px-3 py-2">
-                      <p className="text-xs font-semibold text-emerald-400/90">
-                        Signed with Ed25519
+                      <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+                        {m.text}
                       </p>
-                      <p className="mt-1 break-all font-mono text-xs text-zinc-500">
-                        {m.signatureHex}
+                      <p className={`mt-1 text-[11px] ${m.fromMe ? "text-emerald-200/80" : "text-zinc-500"}`}>
+                        {formatTime(m.at)}
                       </p>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[10px] opacity-70">Signature</summary>
+                        <p className="mt-1 break-all font-mono text-[10px] opacity-80">
+                          {m.signatureHex}
+                        </p>
+                      </details>
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
             </div>
 
@@ -462,22 +536,29 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSignAndSend()}
-                  placeholder="Type a message…"
-                  className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleSignAndSend}
-                  disabled={!input.trim()}
-                  className="rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_0_12px_rgba(52,211,153,0.25)] transition hover:bg-emerald-500 hover:shadow-[0_0_16px_rgba(52,211,153,0.35)] disabled:opacity-50 disabled:shadow-none"
-                >
-                  Sign &amp; Send
-                </button>
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSignAndSend();
+                      }
+                    }}
+                    placeholder="Type a message… (Enter to send)"
+                    className="flex-1 rounded-xl border border-zinc-600 bg-zinc-800/80 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSignAndSend}
+                    disabled={!input.trim()}
+                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-500 hover:shadow-emerald-500/30 disabled:opacity-50 disabled:shadow-none"
+                    title="Sign &amp; Send"
+                  >
+                    <Send className="h-5 w-5" aria-hidden />
+                    <span className="hidden sm:inline">Send</span>
+                  </button>
                 </div>
               </div>
             </div>
