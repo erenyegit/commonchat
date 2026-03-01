@@ -257,7 +257,7 @@ export default function Home() {
       : "Broadcast";
     if (isPrivate && !recipient) return;
     const msg: ChatMessage = {
-      id: `msg_${Date.now()}`,
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
       text,
       signatureHex: sig,
       fromMe: true,
@@ -268,7 +268,11 @@ export default function Home() {
       type: isPrivate ? "private" : "general",
     };
     socketRef.current?.emit("message", msg);
+    setMessages((prev) => [...prev, msg]);
     setInput("");
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
   }, [input, isInitialized, signMessage, displayName, peerId, activeView, activeDirectPeerId, selectedRecipient, onlinePeers]);
 
   useEffect(() => {
