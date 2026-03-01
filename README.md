@@ -1,100 +1,100 @@
 # CommonChat
 
-Tarayıcı tabanlı, **Commonware kriptografisi (Ed25519)** ile imzalanmış mesajlaşma uygulaması. Mesajlar istemcide imzalanır, global bir WebSocket relay üzerinden Peer-ID’ye göre yönlendirilir; doğrulama yine istemcide yapılır.
+Browser-based messaging with **Commonware cryptography (Ed25519)**. Messages are signed in the client, routed over a global WebSocket relay by Peer-ID, and verified in the client.
 
 ---
 
 ## Tech Stack
 
-| Katman        | Teknoloji |
-|---------------|-----------|
-| **Frontend** | Next.js 16, React 19, Tailwind CSS, TypeScript |
+| Layer         | Technology |
+|---------------|------------|
+| **Frontend**  | Next.js 16, React 19, Tailwind CSS, TypeScript |
 | **Relay**     | Node.js, Express, Socket.IO (WebSocket) |
-| **Cryptography** | Rust → WebAssembly (WASM), [Commonware](https://github.com/commonwarexyz/monorepo) Ed25519 primitifleri |
+| **Cryptography** | Rust → WebAssembly (WASM), [Commonware](https://github.com/commonwarexyz/monorepo) Ed25519 primitives |
 
-- **Frontend:** Kimlik yönetimi (localStorage), chat UI, Socket.IO client. WASM modülü (`commonchat-core`) ile imzalama ve doğrulama.
-- **Relay:** Tek sunucu; kullanıcı kaydı (Peer-ID + display name), online listesi, mesajı sadece alıcı Peer-ID’ye iletme. İmza doğrulamaz.
-- **Core (Rust/WASM):** Ed25519 anahtar üretimi, mesaj imzalama, imza doğrulama. `wasm-pack` ile web paketi; Next.js tarafında async WebAssembly ile yüklenir.
-
----
-
-## Core Feature: Tarayıcıda Ed25519 İmzalama ve Doğrulama
-
-Commonware primitifleri (Ed25519) tarayıcıda şu şekilde kullanılıyor:
-
-### Kimlik (Identity)
-
-- **Oluşturma:** `create_identity()` → `ChaCha20` tabanlı CSPRNG ile 32 byte seed, Commonware `PrivateKey::random(rng)` ile Ed25519 özel anahtar üretilir. Ortak anahtar türetilip hex olarak saklanır.
-- **Kalıcılık:** Özel anahtar hex serialize edilir; `export_private_hex()` / `identity_from_private_hex()` ile localStorage’a yazılıp sayfa yenilendiğinde geri yüklenir. Özel anahtar sunucuya gönderilmez.
-
-### İmzalama (Sign)
-
-- Mesaj metni + sabit **namespace** (`commonchat.v1`) Commonware `Signer::sign(namespace, message)` ile imzalanır.
-- Namespace, imzayı uygulama/bağlam ile sınırlar (farklı uygulamaların imzaları birbirine karışmaz).
-- Sonuç 64 byte Ed25519 imzası; hex string olarak frontend’e döner ve mesaj objesine eklenir.
-
-### Doğrulama (Verify)
-
-- Gelen her mesajda: `verify_signature(pub_key_hex, message, signature_hex)` çağrılır.
-- Hex’ten 32 byte public key ve 64 byte signature decode edilir; Commonware `Verifier::verify(namespace, message, signature)` ile doğrulama yapılır.
-- Geçersiz imzalı mesajlar listeye eklenmez (Commonware güvenlik gereksinimi).
-
-Tüm kripto işlemleri **Rust WASM** içinde; özel anahtar JavaScript’e çıkmaz, sadece hex serialize/deserialize ile saklanır.
+- **Frontend:** Identity (localStorage), chat UI, Socket.IO client. Signing and verification via WASM module (`commonchat-core`).
+- **Relay:** Single server; user registration (Peer-ID + display name), online list, message routing to recipient Peer-ID only. No crypto; relay only forwards.
+- **Core (Rust/WASM):** Ed25519 key generation, message signing, signature verification. Built with `wasm-pack`; loaded as async WebAssembly in Next.js.
 
 ---
 
-## Architecture: Mesaj Akışı
+## Core Feature: Ed25519 Signing and Verification in the Browser
 
-Mesajlar önce istemcide imzalanır, relay sadece yönlendirir; alıcı tarafta yine istemcide doğrulama yapılır.
+Commonware Ed25519 primitives are used in the browser as follows:
+
+### Identity
+
+- **Creation:** `create_identity()` uses a ChaCha20-based CSPRNG to produce a 32-byte seed; Commonware `PrivateKey::random(rng)` generates an Ed25519 private key. The public key is derived and stored as hex.
+- **Persistence:** The private key is serialized as hex; `export_private_hex()` / `identity_from_private_hex()` write to and read from localStorage on reload. The private key is never sent to the server.
+
+### Signing
+
+- Message text plus a fixed **namespace** (`commonchat.v1`) is signed with Commonware `Signer::sign(namespace, message)`.
+- The namespace scopes the signature to this app (signatures from other apps do not collide).
+- The result is a 64-byte Ed25519 signature, returned to the frontend as a hex string and attached to the message payload.
+
+### Verification
+
+- For each incoming message, `verify_signature(pub_key_hex, message, signature_hex)` is called.
+- The 32-byte public key and 64-byte signature are decoded from hex; Commonware `Verifier::verify(namespace, message, signature)` performs verification.
+- Messages with invalid signatures are not added to the list (Commonware security requirement).
+
+All crypto runs inside **Rust WASM**; the private key never leaves that context except as hex for storage.
+
+---
+
+## Architecture: Message Flow
+
+Messages are signed in the client; the relay only routes; verification happens again in the client.
 
 ```mermaid
 sequenceDiagram
-    participant User as Kullanıcı
+    participant User as User
     participant FE as Frontend (Next.js)
     participant WASM as commonchat-core (Rust WASM)
     participant Relay as Relay (Socket.IO)
-    participant FE2 as Alıcı Frontend
+    participant FE2 as Recipient Frontend
 
-    User->>FE: Mesaj yaz + "Sign & Send"
+    User->>FE: Type message + "Sign & Send"
     FE->>WASM: sign(message)  [Private Key]
     WASM-->>FE: signature_hex
-    FE->>FE: Mesaj objesi: { text, peerId, signatureHex, recipient, ... }
+    FE->>FE: Message object: { text, peerId, signatureHex, recipient, ... }
     FE->>Relay: emit("message", payload)
-    Relay->>Relay: recipient === "Broadcast" ? Tümü : Sadece peerId soketi
+    Relay->>Relay: recipient === "Broadcast" ? All : Only socket(s) with that peerId
     Relay->>FE2: on("message", payload)
     FE2->>WASM: verify_signature(peerId, text, signatureHex)
-    alt İmza geçerli & (Broadcast veya recipient === myPeerId)
+    alt Signature valid & (Broadcast or recipient === myPeerId)
         WASM-->>FE2: true
-        FE2->>FE2: Mesajı listeye ekle
-    else İmza geçersiz veya başka alıcıya
-        WASM-->>FE2: false / uyuşmazlık
-        FE2->>FE2: Mesajı atla
+        FE2->>FE2: Add message to list
+    else Invalid signature or not for me
+        WASM-->>FE2: false / mismatch
+        FE2->>FE2: Discard message
     end
 ```
 
-**Özet:**
+**Summary:**
 
-1. Gönderen: Mesaj metni → WASM `sign()` → imza hex → mesaj objesi Relay’e gönderilir.
-2. Relay: `recipient` alanına göre mesajı ya herkese (Broadcast) ya da sadece ilgili Peer-ID’ye sahip sokete iletir.
-3. Alıcı: Gelen payload → WASM `verify_signature()` → geçerli ve bana aitse listeye eklenir.
+1. **Sender:** Message text → WASM `sign()` → signature hex → message object sent to relay.
+2. **Relay:** Forwards by `recipient`: either everyone (Broadcast) or only the socket(s) with that Peer-ID.
+3. **Recipient:** Incoming payload → WASM `verify_signature()` → if valid and for me, add to list.
 
 ---
 
-## Proje Yapısı
+## Project Structure
 
 ```
 commonchat/
 ├── core/                 # Rust WASM (commonchat-core)
 │   ├── src/lib.rs        # create_identity, sign, verify_signature, identity_from_private_hex
-│   └── pkg/              # wasm-pack çıktısı (frontend buradan import eder)
+│   └── pkg/              # wasm-pack output (frontend imports from here)
 ├── frontend/             # Next.js 16
 │   ├── app/
-│   │   ├── page.tsx      # Chat UI, Socket.IO, mesaj/online listesi
-│   │   └── hooks/       # useIdentity (WASM init, localStorage, sign/verify)
-│   └── next.config.ts    # asyncWebAssembly (WASM için)
-├── relay/                # Node.js Socket.IO sunucusu
-│   └── server.js        # register, online_list, user_online/offline, message routing
-├── commonware-source/    # Commonware monorepo (cryptography, math, codec vb.)
+│   │   ├── page.tsx      # Chat UI, Socket.IO, message/online list
+│   │   └── hooks/        # useIdentity (WASM init, localStorage, sign/verify)
+│   └── next.config.ts    # asyncWebAssembly for WASM
+├── relay/                # Node.js Socket.IO server
+│   └── server.js         # register, online_list, user_online/offline, message routing
+├── commonware-source/    # Commonware monorepo (cryptography, math, codec, etc.)
 ├── .gitignore
 └── README.md
 ```
@@ -103,14 +103,14 @@ commonchat/
 
 ## Setup
 
-### Ön koşul
+### Prerequisites
 
 - Node.js 18+
-- Rust + `wasm-pack` (core WASM için):  
-  `curl https://rustup.rs -sSf \| sh`  
+- Rust + `wasm-pack` (for building core WASM):  
+  `curl https://rustup.rs -sSf | sh`  
   `cargo install wasm-pack`
 
-### 1. Core (WASM) derleme
+### 1. Build Core (WASM)
 
 ```bash
 cd core
@@ -119,20 +119,20 @@ wasm-pack build --target web --out-dir pkg
 cd ..
 ```
 
-Böylece `core/pkg/` içinde frontend’in import ettiği WASM paketi oluşur.
+This produces the WASM package in `core/pkg/` that the frontend imports.
 
 ### 2. Frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env   # İsteğe bağlı; NEXT_PUBLIC_RELAY_URL varsayılan: http://localhost:3001
+cp .env.example .env   # Optional; NEXT_PUBLIC_RELAY_URL defaults to http://localhost:3001
 npm run dev
 ```
 
-Tarayıcıda: [http://localhost:3000](http://localhost:3000). İlk açılışta “Operator Name” girin (INITIALIZE); kimlik localStorage’a yazılır.
+Open [http://localhost:3000](http://localhost:3000). On first load, enter an "Operator Name" and click Initialize; identity is stored in localStorage.
 
-### 3. Relay (yerel test için)
+### 3. Relay (local testing)
 
 ```bash
 cd relay
@@ -140,13 +140,13 @@ npm install
 npm start
 ```
 
-Varsayılan port: **3001**. Frontend `.env`’de `NEXT_PUBLIC_RELAY_URL=http://localhost:3001` kullanır.
+Default port: **3001**. The frontend uses `NEXT_PUBLIC_RELAY_URL=http://localhost:3001` in `.env`.
 
-### Tam yerel çalıştırma
+### Run everything locally
 
 1. Terminal 1: `cd relay && npm start`
 2. Terminal 2: `cd frontend && npm run dev`
-3. Tarayıcıda localhost:3000 → INITIALIZE → Online Peers’ta diğer sekmeler/cihazlar görünür, mesajlaşma çalışır.
+3. In the browser: localhost:3000 → Initialize → Online Peers show other tabs/devices; messaging works.
 
 ---
 
@@ -154,55 +154,55 @@ Varsayılan port: **3001**. Frontend `.env`’de `NEXT_PUBLIC_RELAY_URL=http://l
 
 ### Frontend → Vercel
 
-1. Repoyu GitHub’a bağlayın; [Vercel](https://vercel.com) ile “Import Project” yapın (root veya `frontend` klasörünü seçin; root ise “Root Directory” = `frontend` yapın).
-2. Build: `npm run build` (veya `cd frontend && npm run build`).
+1. Connect the repo to [Vercel](https://vercel.com) and use "Import Project" (choose root or `frontend`; if root, set "Root Directory" to `frontend`).
+2. Build: `npm run build` (or `cd frontend && npm run build`).
 3. **Environment variable:**  
-   `NEXT_PUBLIC_RELAY_URL` = Relay’in public URL’i (örn. `https://your-app.up.railway.app`).
-4. Deploy; bir sonraki deploy’da bu env ile relay’e bağlanır.
+   `NEXT_PUBLIC_RELAY_URL` = your relay’s public URL (e.g. `https://your-app.up.railway.app`).
+4. Deploy; the app will use this URL to connect to the relay.
 
-### Relay → Railway veya Render
+### Relay → Railway or Render
 
-Relay, uzun ömürlü WebSocket gerektirir; Vercel serverless’e koymayın.
+The relay needs long-lived WebSockets; do not run it on Vercel serverless.
 
 **Railway**
 
-1. [railway.app](https://railway.app) → New Project → “Deploy from GitHub repo” (veya `railway up`).
-2. Root’u `relay` yapın veya relay klasörünü seçin.
+1. [railway.app](https://railway.app) → New Project → "Deploy from GitHub repo" (or `railway up`).
+2. Set root to the `relay` folder (or select the relay directory).
 3. Build: `npm install`  
    Start: `npm start`
-4. “Generate Domain” ile public URL alın; bu URL’i frontend’te `NEXT_PUBLIC_RELAY_URL` olarak kullanın.
-5. Ortam değişkeni: `PORT` (Railway otomatik verir; yoksa 3001).
+4. Use "Generate Domain" to get a public URL; set that as `NEXT_PUBLIC_RELAY_URL` in the frontend.
+5. `PORT` is set by Railway; if not, use 3001.
 
 **Render**
 
-1. [render.com](https://render.com) → New → Web Service; repo’yu bağlayın.
+1. [render.com](https://render.com) → New → Web Service; connect the repo.
 2. Root directory: `relay`.
 3. Build: `npm install`  
    Start: `npm start`
-4. Instance’a verilen URL’i `NEXT_PUBLIC_RELAY_URL` olarak ayarlayın.
+4. Use the instance URL as `NEXT_PUBLIC_RELAY_URL`.
 
-**Not:** Relay’i HTTPS ile sunun; frontend’in farklı bir domain’den bağlanması için CORS zaten sunucuda açık (gerekirse `relay/server.js` içinde origin kısıtlanabilir).
+**Note:** Serve the relay over HTTPS; CORS is enabled for cross-origin frontends (you can restrict origins in `relay/server.js` if needed).
 
 ---
 
 ## Git & GitHub
 
-- Kök `.gitignore` ile `node_modules`, `.next`, `dist`, `.env`, `target` vb. zaten yok sayılır; hassas veya türetilmiş dosyalar repo’ya eklenmez.
-- İlk push için (repo yoksa):
+- The root `.gitignore` excludes `node_modules`, `.next`, `dist`, `.env`, `target`, etc., so sensitive or generated files are not committed.
+- First push (if the repo is new):
 
 ```bash
 git init
 git add .
 git commit -m "Initial commit: CommonChat with Ed25519 and relay"
-git remote add origin https://github.com/KULLANICI/commonchat.git
+git remote add origin https://github.com/YOUR_USERNAME/commonchat.git
 git branch -M main
 git push -u origin main
 ```
 
-`core/pkg/` içindeki WASM çıktısını da repo’da tutmak isterseniz `.gitignore` içindeki `# core/pkg/` satırını kaldırıp bu klasörü commit edebilirsiniz; istemezseniz CI’da `wasm-pack build` ile üretirsiniz.
+To commit the WASM build under `core/pkg/`, uncomment the `# core/pkg/` line in `.gitignore` and add that folder; otherwise build it in CI with `wasm-pack build`.
 
 ---
 
-## Lisans
+## License
 
-Proje lisansı repoda tanımlıdır; Commonware bileşenleri kendi lisanslarına tabidir.
+Project license is defined in the repo; Commonware components are under their own licenses.

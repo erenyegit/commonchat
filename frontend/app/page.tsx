@@ -158,7 +158,7 @@ export default function Home() {
 
     socket.on("message", async (chatMsg: ChatMessage) => {
       const myId = peerId;
-      console.log("Gelen mesaj:", chatMsg);
+      console.log("Incoming message:", chatMsg);
 
       if (!chatMsg?.text || !chatMsg?.signatureHex || !chatMsg?.peerId) return;
       const valid = await verifySignature(
@@ -167,13 +167,13 @@ export default function Home() {
         chatMsg.signatureHex
       );
       if (!valid) {
-        console.log("İMZA HATASI");
+        console.log("SIGNATURE_ERROR");
         return;
       }
       const recipient = chatMsg.recipient ?? "Broadcast";
       const isForMe = recipient === "Broadcast" || recipient === myId;
       if (!isForMe) {
-        console.log(`ID UYUŞMADI: Gelen [${recipient}], Benimki [${myId}]`);
+        console.log(`ID_MISMATCH: Incoming [${recipient}], Mine [${myId}]`);
         return;
       }
       const isFromMe = chatMsg.peerId === myId;
@@ -330,15 +330,15 @@ export default function Home() {
                   className={`h-2 w-2 rounded-full ${
                     relayConnected ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
                   }`}
-                  title={relayConnected ? "Relay bağlı" : "Relay bağlı değil"}
+                  title={relayConnected ? "Relay connected" : "Relay disconnected"}
                 />
               </div>
               <ul className="space-y-2">
                 {onlinePeers.length === 0 && (
                   <p className="text-xs text-zinc-500">
                     {relayConnected
-                      ? "Henüz başka kullanıcı yok."
-                      : "Relay bağlanıyor…"}
+                      ? "No other users yet."
+                      : "Connecting to relay…"}
                   </p>
                 )}
                 {onlinePeers.map((p) => (
@@ -430,7 +430,7 @@ export default function Home() {
                 {selectedRecipient && (
                   <div className="flex items-center gap-2">
                     <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-                      Alıcı: {resolveRecipientLabel(selectedRecipient, onlinePeers)}
+                      To: {resolveRecipientLabel(selectedRecipient, onlinePeers)}
                     </span>
                   </div>
                 )}
@@ -442,7 +442,7 @@ export default function Home() {
                     onChange={(e) =>
                       setSelectedRecipient(resolveRecipientId(e.target.value, onlinePeers))
                     }
-                    placeholder="Broadcast (Everyone) veya isim yazın (Alice, Bob…)"
+                    placeholder="Broadcast (Everyone) or type a name (Alice, Bob…)"
                     className="flex-1 rounded border border-zinc-700/60 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40"
                   />
                   {selectedRecipient && (

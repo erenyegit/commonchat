@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 const CHAT_NAMESPACE: &[u8] = b"commonchat.v1";
 
-/// Kimlik: Ed25519 public key + içeride private key (imza için).
+/// Identity: Ed25519 public key + private key (for signing).
 #[wasm_bindgen]
 pub struct CommonwareIdentity {
     private_key: ed25519::PrivateKey,
@@ -22,7 +22,7 @@ impl CommonwareIdentity {
         self.pub_key_hex.clone()
     }
 
-    /// Mesajı Ed25519 ile imzalar; imza hex string olarak döner.
+    /// Signs the message with Ed25519; returns the signature as a hex string.
     #[wasm_bindgen]
     pub fn sign(&self, message: &str) -> String {
         let sig = self
@@ -31,7 +31,7 @@ impl CommonwareIdentity {
         hex::encode(sig.as_ref())
     }
 
-    /// Private key'i hex string olarak dışa aktarır (localStorage için).
+    /// Exports the private key as a hex string (for localStorage).
     #[wasm_bindgen]
     pub fn export_private_hex(&self) -> String {
         let mut buf = bytes::BytesMut::new();
@@ -40,7 +40,7 @@ impl CommonwareIdentity {
     }
 }
 
-/// Yeni rastgele kimlik oluşturur.
+/// Creates a new random identity.
 #[wasm_bindgen]
 pub fn create_identity() -> CommonwareIdentity {
     let private_key = ed25519::PrivateKey::random(&mut rand::thread_rng());
@@ -51,7 +51,7 @@ pub fn create_identity() -> CommonwareIdentity {
     }
 }
 
-/// İmzayı doğrular: pub_key_hex ile message üzerindeki signature_hex geçerli mi?
+/// Verifies the signature: is signature_hex valid for message under pub_key_hex?
 #[wasm_bindgen]
 pub fn verify_signature(
     pub_key_hex: &str,
@@ -77,7 +77,7 @@ pub fn verify_signature(
     Ok(public_key.verify(CHAT_NAMESPACE, message.as_bytes(), &signature))
 }
 
-/// localStorage'tan okunan private key hex ile kimliği geri yükler.
+/// Restores identity from private key hex (e.g. read from localStorage).
 #[wasm_bindgen]
 pub fn identity_from_private_hex(hex_str: &str) -> Result<CommonwareIdentity, JsError> {
     let bytes_vec =
