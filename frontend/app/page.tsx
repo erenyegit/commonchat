@@ -8,6 +8,8 @@ import { useIdentity } from "./hooks/useIdentity";
 const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL || "http://localhost:3001";
 const MESSAGES_STORAGE_KEY = "commonchat_messages";
 
+type MessageType = "general" | "private";
+
 interface ChatMessage {
   id: string;
   text: string;
@@ -17,6 +19,7 @@ interface ChatMessage {
   peerId: string;
   recipient: string;
   at: number;
+  type?: MessageType;
 }
 
 function formatTime(at: number): string {
@@ -151,14 +154,21 @@ export default function Home() {
   }, [activeView, activeDirectPeerId]);
 
   const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
-  const isGeneralMessage = (m: ChatMessage) => (m.recipient ?? "Broadcast") === "Broadcast";
-  const isDirectMessageWith = (m: ChatMessage, otherPeerId: string) =>
-    (m.fromMe && (m.recipient ?? "") === otherPeerId) || (!m.fromMe && m.peerId === otherPeerId);
+
+  const isGeneralMessage = (m: ChatMessage) => {
+    const t = m.type ?? ((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
+    return t === "general" && (m.recipient ?? "Broadcast") === "Broadcast";
+  };
+  const isPrivateMessageWith = (m: ChatMessage, otherPeerId: string) => {
+    const t = m.type ?? ((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
+    if (t !== "private") return false;
+    return (m.fromMe && (m.recipient ?? "") === otherPeerId) || (!m.fromMe && m.peerId === otherPeerId);
+  };
   const visibleMessages: ChatMessage[] =
     activeView === "general"
       ? messages.filter(isGeneralMessage)
       : activeDirectPeerId
-        ? messages.filter((m) => isDirectMessageWith(m, activeDirectPeerId))
+        ? messages.filter((m) => isPrivateMessageWith(m, activeDirectPeerId))
         : [];
 
   const openGeneral = useCallback(() => {
@@ -223,10 +233,11 @@ export default function Home() {
     if (!text || !isInitialized) return;
     const sig = signMessage(text);
     if (sig == null) return;
-    const recipient =
-      activeView === "general"
-        ? "Broadcast"
-        : activeDirectPeerId || resolveRecipientId(selectedRecipient, onlinePeers) || selectedRecipient.trim() || "Broadcast";
+    const isPrivate = activeView === "direct" && !!activeDirectPeerId;
+    const recipient = isPrivate
+      ? (activeDirectPeerId || resolveRecipientId(selectedRecipient, onlinePeers) || selectedRecipient.trim() || "")
+      : "Broadcast";
+    if (isPrivate && !recipient) return;
     const msg: ChatMessage = {
       id: `msg_${Date.now()}`,
       text,
@@ -234,8 +245,9 @@ export default function Home() {
       fromMe: true,
       displayName,
       peerId,
-      recipient,
+      recipient: recipient || "Broadcast",
       at: Date.now(),
+      type: isPrivate ? "private" : "general",
     };
     socketRef.current?.emit("message", msg);
     setInput("");
@@ -287,6 +299,10 @@ export default function Home() {
         return;
       }
       const recipient = chatMsg.recipient ?? "Broadcast";
+      const msgType: MessageType = chatMsg.type ?? (recipient === "Broadcast" ? "general" : "private");
+      if (msgType === "private" && recipient !== myId) {
+        return;
+      }
       const isForMe = recipient === "Broadcast" || recipient === myId;
       if (!isForMe) {
         console.log(`ID_MISMATCH: Incoming [${recipient}], Mine [${myId}]`);
@@ -300,6 +316,7 @@ export default function Home() {
           {
             ...chatMsg,
             fromMe: isFromMe,
+            type: msgType,
           },
         ];
       });
@@ -734,6 +751,30 @@ export default function Home() {
           </p>
         </div>
       )}
+
+      {/* Built by - minimal signature */}
+      <div className="fixed bottom-3 right-3 z-30 select-none opacity-60 hover:opacity-90 transition-opacity duration-200">
+        <p className="text-[10px] font-medium text-zinc-500">
+          Built by{" "}
+          <a
+            href="https://x.com/holosko_eth"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-400 hover:text-emerald-400 transition-colors duration-200 hover:drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+          >
+            Holosko
+          </a>
+          {" "}with{" "}
+          <a
+            href="https://github.com/commonwarexyz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-400 hover:text-emerald-400 transition-colors duration-200 hover:drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+          >
+            @commonwarexyz
+          </a>
+        </p>
+      </div>
     </div>
   );
 }
