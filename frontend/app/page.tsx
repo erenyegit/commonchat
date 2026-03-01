@@ -29,6 +29,12 @@ function truncate(s: string, len = 12) {
   return s.slice(0, len) + "…";
 }
 
+function peerIdShort(peerId: string, head = 4, tail = 4): string {
+  const s = peerId.replace(/^0x/i, "");
+  if (s.length <= head + tail) return peerId;
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+}
+
 function getPeerByPubKey(
   pubKey: string,
   peers: { id: string; name: string; pubKey: string }[]
@@ -135,6 +141,8 @@ export default function Home() {
   const [activeView, setActiveView] = useState<ViewMode>("general");
   const [activeDirectPeerId, setActiveDirectPeerId] = useState<string | null>(null);
   const [unreadPeers, setUnreadPeers] = useState<Set<string>>(new Set());
+  const [tabUnreadCount, setTabUnreadCount] = useState(0);
+  const baseTitleRef = useRef("CommonChat");
   const activeViewRef = useRef<ViewMode>("general");
   const activeDirectPeerIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -297,6 +305,26 @@ export default function Home() {
       });
       if (!isFromMe) {
         setP2pNotification(true);
+        if (typeof document !== "undefined" && document.hidden) {
+          setTabUnreadCount((c) => c + 1);
+          if (typeof window !== "undefined" && window.AudioContext) {
+            try {
+              const ctx = new window.AudioContext();
+              const o = ctx.createOscillator();
+              const g = ctx.createGain();
+              o.connect(g);
+              g.connect(ctx.destination);
+              o.frequency.value = 880;
+              o.type = "sine";
+              g.gain.setValueAtTime(0.08, ctx.currentTime);
+              g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+              o.start(ctx.currentTime);
+              o.stop(ctx.currentTime + 0.08);
+            } catch {
+              // ignore
+            }
+          }
+        }
         if (recipient === myId && chatMsg.peerId !== myId) {
           setUnreadPeers((prev) => {
             if (activeViewRef.current === "direct" && activeDirectPeerIdRef.current === chatMsg.peerId) return prev;
@@ -316,6 +344,28 @@ export default function Home() {
   }, [isInitialized, peerId, displayName, verifySignature]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    baseTitleRef.current = document.title || "CommonChat";
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.title = tabUnreadCount > 0 ? `(${tabUnreadCount}) New Message - CommonChat` : baseTitleRef.current;
+  }, [tabUnreadCount]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibility = () => {
+      if (!document.hidden) {
+        setTabUnreadCount(0);
+        document.title = baseTitleRef.current;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  useEffect(() => {
     if (!p2pNotification) return;
     const t = setTimeout(() => setP2pNotification(false), 4000);
     return () => clearTimeout(t);
@@ -331,6 +381,7 @@ export default function Home() {
     setEditingName(false);
   };
 
+  const activeUsersCount = onlinePeers.length + 1;
   const showModal = !isInitialized && isReady && !error;
 
   return (
@@ -503,7 +554,7 @@ export default function Home() {
                         >
                           <span
                             className={`h-2 w-2 shrink-0 rounded-full ${
-                              p.online ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
+                              p.online ? "animate-pulse bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
                             }`}
                             title={p.online ? "Online" : "Offline"}
                           />
@@ -526,16 +577,23 @@ export default function Home() {
           {/* Right: chat */}
           <main className="flex flex-1 flex-col bg-zinc-950">
             <div className="border-b border-zinc-800 px-6 py-3">
-              <h1 className="text-sm font-semibold text-zinc-300">
-                {activeView === "general" ? (
-                  <>General Chat <span className="text-emerald-400">#general</span></>
-                ) : activeDirectPeerId ? (
-                  <>Direct: <span className="text-emerald-400">{resolveRecipientLabel(activeDirectPeerId, onlinePeers)}</span></>
-                ) : (
-                  <>Direct Messages</>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h1 className="text-sm font-semibold text-zinc-300">
+                  {activeView === "general" ? (
+                    <>General Chat <span className="text-emerald-400">#general</span></>
+                  ) : activeDirectPeerId ? (
+                    <>Direct: <span className="text-emerald-400">{resolveRecipientLabel(activeDirectPeerId, onlinePeers)}</span></>
+                  ) : (
+                    <>Direct Messages</>
+                  )}
+                </h1>
+                {activeView === "general" && (
+                  <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+                    Active: {activeUsersCount}
+                  </span>
                 )}
-              </h1>
-              <p className="text-xs text-zinc-500">
+              </div>
+              <p className="mt-0.5 text-xs text-zinc-500">
                 {activeView === "general" ? "Broadcast channel. Ed25519 signed." : "Private conversation. End-to-end."}
               </p>
             </div>
@@ -569,6 +627,11 @@ export default function Home() {
                           : "rounded-bl-md bg-zinc-700/90 text-zinc-100"
                       }`}
                     >
+                      {activeView === "general" && (
+                        <p className={`mb-0.5 font-mono text-[10px] ${m.fromMe ? "text-amber-200/90" : "text-amber-400/80"}`} title={m.peerId}>
+                          {peerIdShort(m.peerId)}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2">
                         <span className={`text-xs font-semibold ${m.fromMe ? "text-emerald-100" : "text-zinc-300"}`}>
                           {m.displayName}
