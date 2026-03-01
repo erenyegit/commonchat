@@ -21,14 +21,17 @@ export function useIdentity() {
     pub_key: string;
     export_private_hex: () => string;
   } | null>(null);
-  const coreRef = useRef<Awaited<ReturnType<typeof loadCore>> | null>(null);
-  async function loadCore() {
-    return import("commonchat-core");
-  }
+  type CoreModule = {
+  default?: () => Promise<unknown>;
+  create_identity: () => { sign: (m: string) => string; pub_key: string; export_private_hex: () => string };
+  identity_from_private_hex: (hex: string) => { sign: (m: string) => string; pub_key: string; export_private_hex: () => string };
+  verify_signature: (pub: string, msg: string, sig: string) => boolean;
+};
+  const coreRef = useRef<CoreModule | null>(null);
 
   const loadStored = useCallback(async () => {
     try {
-      const core = await loadCore();
+      const core = await import("../../src/commonchat-core/commonchat_core.js") as CoreModule;
       coreRef.current = core;
       if (typeof core.default === "function") {
         await core.default();
@@ -60,7 +63,7 @@ export function useIdentity() {
     async (name: string) => {
       const core = coreRef.current;
       if (!core) {
-        const mod = await loadCore();
+        const mod = await import("../../src/commonchat-core/commonchat_core.js") as CoreModule;
         coreRef.current = mod;
         if (typeof mod.default === "function") await mod.default();
       }
@@ -91,7 +94,7 @@ export function useIdentity() {
   const verifySignature = useCallback(
     async (pubKeyHex: string, message: string, signatureHex: string): Promise<boolean> => {
       try {
-        const c = coreRef.current ?? (await loadCore());
+        const c = coreRef.current ?? (await import("../../src/commonchat-core/commonchat_core.js") as CoreModule);
         if (!coreRef.current) coreRef.current = c;
         if (typeof c.default === "function") await c.default();
         return c.verify_signature(pubKeyHex, message, signatureHex);

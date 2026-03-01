@@ -1,15 +1,1 @@
-{
-  "name": "commonchat-core",
-  "type": "module",
-  "version": "0.1.0",
-  "files": [
-    "commonchat_core_bg.wasm",
-    "commonchat_core.js",
-    "commonchat_core.d.ts"
-  ],
-  "main": "commonchat_core.js",
-  "types": "commonchat_core.d.ts",
-  "sideEffects": [
-    "./snippets/*"
-  ]
-}
+{"type":"module","version":"0.1.0","files":["commonchat_core_bg.wasm","commonchat_core.js","commonchat_core.d.ts"],"main":"commonchat_core.js","types":"commonchat_core.d.ts","sideEffects":["./snippets/*"]}
