@@ -131,6 +131,44 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
+  type ViewMode = "general" | "direct";
+  const [activeView, setActiveView] = useState<ViewMode>("general");
+  const [activeDirectPeerId, setActiveDirectPeerId] = useState<string | null>(null);
+  const [unreadPeers, setUnreadPeers] = useState<Set<string>>(new Set());
+  const activeViewRef = useRef<ViewMode>("general");
+  const activeDirectPeerIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeViewRef.current = activeView;
+    activeDirectPeerIdRef.current = activeDirectPeerId;
+  }, [activeView, activeDirectPeerId]);
+
+  const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
+  const isGeneralMessage = (m: ChatMessage) => (m.recipient ?? "Broadcast") === "Broadcast";
+  const isDirectMessageWith = (m: ChatMessage, otherPeerId: string) =>
+    (m.fromMe && (m.recipient ?? "") === otherPeerId) || (!m.fromMe && m.peerId === otherPeerId);
+  const visibleMessages: ChatMessage[] =
+    activeView === "general"
+      ? messages.filter(isGeneralMessage)
+      : activeDirectPeerId
+        ? messages.filter((m) => isDirectMessageWith(m, activeDirectPeerId))
+        : [];
+
+  const openGeneral = useCallback(() => {
+    setActiveView("general");
+    setActiveDirectPeerId(null);
+    setSelectedRecipient("");
+  }, []);
+  const openDirectWith = useCallback((peerPubKey: string) => {
+    setActiveView("direct");
+    setActiveDirectPeerId(peerPubKey);
+    setSelectedRecipient(peerPubKey);
+    setUnreadPeers((prev) => {
+      const next = new Set(prev);
+      next.delete(peerPubKey);
+      return next;
+    });
+  }, []);
+
   const storageKey = peerId ? `${MESSAGES_STORAGE_KEY}_${peerId}` : null;
 
   useEffect(() => {
@@ -160,7 +198,7 @@ export default function Home() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [visibleMessages]);
 
   const handleInitialize = useCallback(() => {
     const name = operatorName.trim();
@@ -178,9 +216,9 @@ export default function Home() {
     const sig = signMessage(text);
     if (sig == null) return;
     const recipient =
-      resolveRecipientId(selectedRecipient, onlinePeers) ||
-      selectedRecipient.trim() ||
-      "Broadcast";
+      activeView === "general"
+        ? "Broadcast"
+        : activeDirectPeerId || resolveRecipientId(selectedRecipient, onlinePeers) || selectedRecipient.trim() || "Broadcast";
     const msg: ChatMessage = {
       id: `msg_${Date.now()}`,
       text,
@@ -193,7 +231,7 @@ export default function Home() {
     };
     socketRef.current?.emit("message", msg);
     setInput("");
-  }, [input, isInitialized, signMessage, displayName, peerId, selectedRecipient, onlinePeers]);
+  }, [input, isInitialized, signMessage, displayName, peerId, activeView, activeDirectPeerId, selectedRecipient, onlinePeers]);
 
   useEffect(() => {
     if (!isInitialized || !peerId || !displayName) return;
@@ -257,7 +295,17 @@ export default function Home() {
           },
         ];
       });
-      if (!isFromMe) setP2pNotification(true);
+      if (!isFromMe) {
+        setP2pNotification(true);
+        if (recipient === myId && chatMsg.peerId !== myId) {
+          setUnreadPeers((prev) => {
+            if (activeViewRef.current === "direct" && activeDirectPeerIdRef.current === chatMsg.peerId) return prev;
+            const next = new Set(prev);
+            next.add(chatMsg.peerId);
+            return next;
+          });
+        }
+      }
     });
 
     return () => {
@@ -283,7 +331,6 @@ export default function Home() {
     setEditingName(false);
   };
 
-  const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
   const showModal = !isInitialized && isReady && !error;
 
   return (
@@ -392,11 +439,35 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="flex-1 overflow-auto p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  Previously talked to
-                </h3>
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="flex border-b border-zinc-700">
+                <button
+                  type="button"
+                  onClick={openGeneral}
+                  className={`flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
+                    activeView === "general"
+                      ? "border-b-2 border-emerald-500 bg-zinc-800/50 text-emerald-400"
+                      : "text-zinc-500 hover:bg-zinc-800/30 hover:text-zinc-400"
+                  }`}
+                >
+                  General Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView("direct")}
+                  className={`flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
+                    activeView === "direct"
+                      ? "border-b-2 border-emerald-500 bg-zinc-800/50 text-emerald-400"
+                      : "text-zinc-500 hover:bg-zinc-800/30 hover:text-zinc-400"
+                  }`}
+                >
+                  Direct Messages
+                </button>
+              </div>
+              <div className="mb-2 flex items-center justify-between px-4 pt-3">
+                <span className="text-xs text-zinc-500">
+                  {relayConnected ? "Relay connected" : "Connecting…"}
+                </span>
                 <span
                   className={`h-2 w-2 rounded-full ${
                     relayConnected ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
@@ -404,41 +475,51 @@ export default function Home() {
                   title={relayConnected ? "Relay connected" : "Relay disconnected"}
                 />
               </div>
-              <ul className="space-y-2">
-                {previousPeers.length === 0 && (
-                  <p className="text-xs text-zinc-500">
-                    {relayConnected
-                      ? "No conversations yet."
-                      : "Connecting to relay…"}
-                  </p>
+              <div className="flex-1 overflow-auto px-4 pb-4">
+                {activeView === "general" && (
+                  <p className="text-xs text-zinc-500">Global channel. Messages below go to everyone.</p>
                 )}
-                {previousPeers.map((p) => (
-                  <li
-                    key={p.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedRecipient(p.pubKey)}
-                    onKeyDown={(e) => e.key === "Enter" && setSelectedRecipient(p.pubKey)}
-                    title={`To: ${p.name} (${p.pubKey})${p.online ? " • Online" : ""}`}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
-                      selectedRecipient === p.pubKey
-                        ? "border-emerald-500/60 bg-emerald-950/20"
-                        : "border-zinc-700/50 bg-zinc-800/50"
-                    }`}
-                  >
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${
-                        p.online ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
-                      }`}
-                      title={p.online ? "Online" : "Offline"}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-zinc-200">{p.name}</p>
-                      <p className="truncate text-xs text-zinc-500">{p.pubKey}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                {activeView === "direct" && (
+                  <ul className="space-y-2">
+                    {previousPeers.length === 0 && (
+                      <p className="text-xs text-zinc-500">
+                        {relayConnected ? "No DMs yet." : "Connecting to relay…"}
+                      </p>
+                    )}
+                    {previousPeers.map((p) => {
+                      const isSelected = activeDirectPeerId === p.pubKey;
+                      const hasUnread = unreadPeers.has(p.pubKey);
+                      return (
+                        <li
+                          key={p.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => openDirectWith(p.pubKey)}
+                          onKeyDown={(e) => e.key === "Enter" && openDirectWith(p.pubKey)}
+                          title={`${p.name}${p.online ? " • Online" : ""}${hasUnread ? " • Unread" : ""}`}
+                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
+                            isSelected ? "border-emerald-500/60 bg-emerald-950/20" : "border-zinc-700/50 bg-zinc-800/50"
+                          }`}
+                        >
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${
+                              p.online ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
+                            }`}
+                            title={p.online ? "Online" : "Offline"}
+                          />
+                          {hasUnread && (
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" title="Unread messages" aria-label="Unread" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-zinc-200">{p.name}</p>
+                            <p className="truncate text-xs text-zinc-500">{p.pubKey}</p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             </div>
           </aside>
 
@@ -446,19 +527,37 @@ export default function Home() {
           <main className="flex flex-1 flex-col bg-zinc-950">
             <div className="border-b border-zinc-800 px-6 py-3">
               <h1 className="text-sm font-semibold text-zinc-300">
-                Channel <span className="text-emerald-400">#general</span>
+                {activeView === "general" ? (
+                  <>General Chat <span className="text-emerald-400">#general</span></>
+                ) : activeDirectPeerId ? (
+                  <>Direct: <span className="text-emerald-400">{resolveRecipientLabel(activeDirectPeerId, onlinePeers)}</span></>
+                ) : (
+                  <>Direct Messages</>
+                )}
               </h1>
-              <p className="text-xs text-zinc-500">Messages are signed with Ed25519</p>
+              <p className="text-xs text-zinc-500">
+                {activeView === "general" ? "Broadcast channel. Ed25519 signed." : "Private conversation. End-to-end."}
+              </p>
             </div>
 
             <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6">
               <div className="mx-auto max-w-2xl space-y-3">
-                {messages.length === 0 && (
+                {activeView === "direct" && !activeDirectPeerId && (
                   <p className="text-center text-sm text-zinc-500">
-                    No messages yet. Type below and press Enter or click Send.
+                    Select a conversation from the left.
                   </p>
                 )}
-                {messages.map((m) => (
+                {activeView === "general" && visibleMessages.length === 0 && (
+                  <p className="text-center text-sm text-zinc-500">
+                    No general messages yet. Type below and press Enter or click Send.
+                  </p>
+                )}
+                {activeView === "direct" && activeDirectPeerId && visibleMessages.length === 0 && (
+                  <p className="text-center text-sm text-zinc-500">
+                    No messages with this peer yet.
+                  </p>
+                )}
+                {visibleMessages.map((m) => (
                   <div
                     key={m.id}
                     className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
@@ -501,40 +600,19 @@ export default function Home() {
 
             <div className="border-t border-zinc-800 p-4">
               <div className="mx-auto max-w-2xl space-y-2">
-                {selectedRecipient && (
+                {activeView === "general" && (
+                  <p className="text-xs text-zinc-500">Sending to everyone (General Chat)</p>
+                )}
+                {activeView === "direct" && activeDirectPeerId && (
                   <div className="flex items-center gap-2">
                     <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-                      To: {resolveRecipientLabel(selectedRecipient, onlinePeers)}
+                      To: {resolveRecipientLabel(activeDirectPeerId, onlinePeers)} (E2E)
                     </span>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-zinc-500">To:</span>
-                  <input
-                    type="text"
-                    value={resolveRecipientDisplay(selectedRecipient, onlinePeers)}
-                    onChange={(e) =>
-                      setSelectedRecipient(resolveRecipientId(e.target.value, onlinePeers))
-                    }
-                    placeholder="Broadcast (Everyone) or type a name (Alice, Bob…)"
-                    className="flex-1 rounded border border-zinc-700/60 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40"
-                  />
-                  {selectedRecipient && (
-                    <>
-                      <span className="rounded bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-400/90">
-                        End-to-End Encrypted
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedRecipient("")}
-                        className="text-xs text-zinc-500 hover:text-zinc-300"
-                        title="Clear recipient"
-                      >
-                        Clear
-                      </button>
-                    </>
-                  )}
-                </div>
+                {activeView === "direct" && !activeDirectPeerId && (
+                  <p className="text-xs text-zinc-500">Select a conversation to send a message</p>
+                )}
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -546,13 +624,20 @@ export default function Home() {
                         handleSignAndSend();
                       }
                     }}
-                    placeholder="Type a message… (Enter to send)"
-                    className="flex-1 rounded-xl border border-zinc-600 bg-zinc-800/80 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                    placeholder={
+                      activeView === "general"
+                        ? "Message everyone… (Enter to send)"
+                        : activeDirectPeerId
+                          ? "Private message… (Enter to send)"
+                          : "Select a conversation first"
+                    }
+                    disabled={activeView === "direct" && !activeDirectPeerId}
+                    className="flex-1 rounded-xl border border-zinc-600 bg-zinc-800/80 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
                   />
                   <button
                     type="button"
                     onClick={handleSignAndSend}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() || (activeView === "direct" && !activeDirectPeerId)}
                     className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-500 hover:shadow-emerald-500/30 disabled:opacity-50 disabled:shadow-none"
                     title="Sign &amp; Send"
                   >
