@@ -9,7 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "commonchat-core": "file:../core/pkg",
+    "commonchat-core": "file:./commonchat-core",
     "next": "16.1.6",
     "socket.io-client": "^4.8.0",
     "react": "19.2.3",
