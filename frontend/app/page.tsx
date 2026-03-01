@@ -112,6 +112,23 @@ function getPreviousPeers(
   return result.sort((a, b) => (a.online === b.online ? 0 : a.online ? -1 : 1));
 }
 
+function getDirectMessagesPeerList(
+  onlinePeers: { id: string; name: string; pubKey: string }[],
+  previousPeers: { id: string; name: string; pubKey: string; online: boolean }[],
+  myPeerId: string
+): { id: string; name: string; pubKey: string; online: boolean }[] {
+  const byKey = new Map<string, { id: string; name: string; pubKey: string; online: boolean }>();
+  for (const p of onlinePeers) {
+    if (p.pubKey === myPeerId) continue;
+    byKey.set(p.pubKey, { id: p.id, name: p.name, pubKey: p.pubKey, online: true });
+  }
+  for (const p of previousPeers) {
+    if (p.pubKey === myPeerId) continue;
+    if (!byKey.has(p.pubKey)) byKey.set(p.pubKey, { ...p, online: false });
+  }
+  return Array.from(byKey.values()).sort((a, b) => (a.online === b.online ? 0 : a.online ? -1 : 1));
+}
+
 export default function Home() {
   const {
     displayName,
@@ -154,6 +171,7 @@ export default function Home() {
   }, [activeView, activeDirectPeerId]);
 
   const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
+  const directMessagesPeerList = getDirectMessagesPeerList(onlinePeers, previousPeers, peerId);
 
   const isGeneralMessage = (m: ChatMessage) => {
     const t = m.type ?? ((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
@@ -549,12 +567,12 @@ export default function Home() {
                 )}
                 {activeView === "direct" && (
                   <ul className="space-y-2">
-                    {previousPeers.length === 0 && (
+                    {directMessagesPeerList.length === 0 && (
                       <p className="text-xs text-zinc-500">
-                        {relayConnected ? "No DMs yet." : "Connecting to relay…"}
+                        {relayConnected ? "No one else online yet." : "Connecting to relay…"}
                       </p>
                     )}
-                    {previousPeers.map((p) => {
+                    {directMessagesPeerList.map((p) => {
                       const isSelected = activeDirectPeerId === p.pubKey;
                       const hasUnread = unreadPeers.has(p.pubKey);
                       return (
@@ -629,7 +647,7 @@ export default function Home() {
                 )}
                 {activeView === "direct" && activeDirectPeerId && visibleMessages.length === 0 && (
                   <p className="text-center text-sm text-zinc-500">
-                    No messages with this peer yet.
+                    Henüz mesaj yok, ilk mesajı sen gönder!
                   </p>
                 )}
                 {visibleMessages.map((m) => (
