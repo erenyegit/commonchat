@@ -9,6 +9,13 @@ const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL || "http://localhost:3001";
 const MESSAGES_STORAGE_KEY = "commonchat_messages";
 
 type MessageType = "general" | "private";
+export type PublicRoomId = "general" | "commonware" | "sloth";
+
+const PUBLIC_ROOMS: { id: PublicRoomId; label: string; emoji: string }[] = [
+  { id: "general", label: "General Chat", emoji: "🌐" },
+  { id: "commonware", label: "Commonware Community", emoji: "🦀" },
+  { id: "sloth", label: "Celestine Sloth Community", emoji: "🦥" },
+];
 
 interface ChatMessage {
   id: string;
@@ -20,6 +27,7 @@ interface ChatMessage {
   recipient: string;
   at: number;
   type?: MessageType;
+  roomId?: string;
 }
 
 function formatTime(at: number): string {
@@ -157,25 +165,30 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
-  type ViewMode = "general" | "direct";
-  const [activeView, setActiveView] = useState<ViewMode>("general");
+  type ViewMode = "public" | "direct";
+  const [activeView, setActiveView] = useState<ViewMode>("public");
+  const [activePublicRoomId, setActivePublicRoomId] = useState<PublicRoomId>("general");
   const [activeDirectPeerId, setActiveDirectPeerId] = useState<string | null>(null);
   const [unreadPeers, setUnreadPeers] = useState<Set<string>>(new Set());
   const [tabUnreadCount, setTabUnreadCount] = useState(0);
   const baseTitleRef = useRef("CommonChat");
-  const activeViewRef = useRef<ViewMode>("general");
+  const activeViewRef = useRef<ViewMode>("public");
+  const activePublicRoomIdRef = useRef<PublicRoomId>("general");
   const activeDirectPeerIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeViewRef.current = activeView;
+    activePublicRoomIdRef.current = activePublicRoomId;
     activeDirectPeerIdRef.current = activeDirectPeerId;
-  }, [activeView, activeDirectPeerId]);
+  }, [activeView, activePublicRoomId, activeDirectPeerId]);
 
   const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
   const directMessagesPeerList = getDirectMessagesPeerList(onlinePeers, previousPeers, peerId);
 
-  const isGeneralMessage = (m: ChatMessage) => {
+  const isPublicRoomMessage = (m: ChatMessage, roomId: PublicRoomId) => {
     const t = m.type ?? ((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
-    return t === "general" && (m.recipient ?? "Broadcast") === "Broadcast";
+    if (t !== "general" || (m.recipient ?? "Broadcast") !== "Broadcast") return false;
+    const msgRoom = (m.roomId ?? "general") as PublicRoomId;
+    return msgRoom === roomId;
   };
   const isPrivateMessageWith = (m: ChatMessage, otherPeerId: string) => {
     const t = m.type ?? ((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
@@ -183,14 +196,15 @@ export default function Home() {
     return (m.fromMe && (m.recipient ?? "") === otherPeerId) || (!m.fromMe && m.peerId === otherPeerId);
   };
   const visibleMessages: ChatMessage[] =
-    activeView === "general"
-      ? messages.filter(isGeneralMessage)
+    activeView === "public"
+      ? messages.filter((m) => isPublicRoomMessage(m, activePublicRoomId))
       : activeDirectPeerId
         ? messages.filter((m) => isPrivateMessageWith(m, activeDirectPeerId))
         : [];
 
-  const openGeneral = useCallback(() => {
-    setActiveView("general");
+  const openPublicRoom = useCallback((roomId: PublicRoomId) => {
+    setActiveView("public");
+    setActivePublicRoomId(roomId);
     setActiveDirectPeerId(null);
     setSelectedRecipient("");
   }, []);
@@ -266,6 +280,7 @@ export default function Home() {
       recipient: recipient || "Broadcast",
       at: Date.now(),
       type: isPrivate ? "private" : "general",
+      roomId: activeView === "public" ? activePublicRoomId : undefined,
     };
     socketRef.current?.emit("message", msg);
     setMessages((prev) => [...prev, msg]);
@@ -273,7 +288,7 @@ export default function Home() {
     requestAnimationFrame(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     });
-  }, [input, isInitialized, signMessage, displayName, peerId, activeView, activeDirectPeerId, selectedRecipient, onlinePeers]);
+  }, [input, isInitialized, signMessage, displayName, peerId, activeView, activePublicRoomId, activeDirectPeerId, selectedRecipient, onlinePeers]);
 
   useEffect(() => {
     if (!isInitialized || !peerId || !displayName) return;
@@ -530,31 +545,7 @@ export default function Home() {
             </div>
 
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex border-b border-zinc-700">
-                <button
-                  type="button"
-                  onClick={openGeneral}
-                  className={`flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-                    activeView === "general"
-                      ? "border-b-2 border-emerald-500 bg-zinc-800/50 text-emerald-400"
-                      : "text-zinc-500 hover:bg-zinc-800/30 hover:text-zinc-400"
-                  }`}
-                >
-                  General Chat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveView("direct")}
-                  className={`flex-1 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-                    activeView === "direct"
-                      ? "border-b-2 border-emerald-500 bg-zinc-800/50 text-emerald-400"
-                      : "text-zinc-500 hover:bg-zinc-800/30 hover:text-zinc-400"
-                  }`}
-                >
-                  Direct Messages
-                </button>
-              </div>
-              <div className="mb-2 flex items-center justify-between px-4 pt-3">
+              <div className="mb-2 flex items-center justify-between border-b border-zinc-700 px-4 py-2">
                 <span className="text-xs text-zinc-500">
                   {relayConnected ? "Relay connected" : "Connecting…"}
                 </span>
@@ -566,11 +557,32 @@ export default function Home() {
                 />
               </div>
               <div className="flex-1 overflow-auto px-4 pb-4">
-                {activeView === "general" && (
-                  <p className="text-xs text-zinc-500">Global channel. Messages below go to everyone.</p>
-                )}
-                {activeView === "direct" && (
-                  <ul className="space-y-2">
+                <h3 className="mb-2 mt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  Public Rooms
+                </h3>
+                <ul className="space-y-1">
+                  {PUBLIC_ROOMS.map((room) => {
+                    const isSelected = activeView === "public" && activePublicRoomId === room.id;
+                    return (
+                      <li key={room.id}>
+                        <button
+                          type="button"
+                          onClick={() => openPublicRoom(room.id)}
+                          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
+                            isSelected ? "border-emerald-500/60 bg-emerald-950/20 text-emerald-400" : "border-zinc-700/50 bg-zinc-800/50 text-zinc-200"
+                          }`}
+                        >
+                          <span className="text-base" aria-hidden>{room.emoji}</span>
+                          <span className="truncate">{room.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  Direct Messages
+                </h3>
+                <ul className="space-y-2">
                     {directMessagesPeerList.length === 0 && (
                       <p className="text-xs text-zinc-500">
                         {relayConnected ? "No one else online yet." : "Connecting to relay…"}
@@ -607,8 +619,7 @@ export default function Home() {
                         </li>
                       );
                     })}
-                  </ul>
-                )}
+                </ul>
               </div>
             </div>
           </aside>
@@ -617,23 +628,29 @@ export default function Home() {
           <main className="flex flex-1 flex-col bg-zinc-950">
             <div className="border-b border-zinc-800 px-6 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h1 className="text-sm font-semibold text-zinc-300">
-                  {activeView === "general" ? (
-                    <>General Chat <span className="text-emerald-400">#general</span></>
+                <h1 className="text-lg font-semibold text-zinc-300">
+                  {activeView === "public" ? (
+                    <>
+                      <span className="mr-2" aria-hidden>
+                        {PUBLIC_ROOMS.find((r) => r.id === activePublicRoomId)?.emoji ?? "🌐"}
+                      </span>
+                      {PUBLIC_ROOMS.find((r) => r.id === activePublicRoomId)?.label ?? "General Chat"}
+                      <span className="ml-2 text-emerald-400">#{activePublicRoomId}</span>
+                    </>
                   ) : activeDirectPeerId ? (
                     <>Direct: <span className="text-emerald-400">{resolveRecipientLabel(activeDirectPeerId, onlinePeers)}</span></>
                   ) : (
                     <>Direct Messages</>
                   )}
                 </h1>
-                {activeView === "general" && (
+                {activeView === "public" && (
                   <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
                     Active: {activeUsersCount}
                   </span>
                 )}
               </div>
               <p className="mt-0.5 text-xs text-zinc-500">
-                {activeView === "general" ? "Broadcast channel. Ed25519 signed." : "Private conversation. End-to-end."}
+                {activeView === "public" ? "Public channel. Ed25519 signed." : "Private conversation. End-to-end."}
               </p>
             </div>
 
@@ -644,7 +661,7 @@ export default function Home() {
                     Select a conversation from the left.
                   </p>
                 )}
-                {activeView === "general" && visibleMessages.length === 0 && (
+                {activeView === "public" && visibleMessages.length === 0 && (
                   <p className="text-center text-sm text-zinc-500">
                     No general messages yet. Type below and press Enter or click Send.
                   </p>
@@ -666,7 +683,7 @@ export default function Home() {
                           : "rounded-bl-md bg-zinc-700/90 text-zinc-100"
                       }`}
                     >
-                      {activeView === "general" && (
+                      {activeView === "public" && (
                         <p className={`mb-0.5 font-mono text-[10px] ${m.fromMe ? "text-amber-200/90" : "text-amber-400/80"}`} title={m.peerId}>
                           {peerIdShort(m.peerId)}
                         </p>
@@ -702,7 +719,7 @@ export default function Home() {
 
             <div className="border-t border-zinc-800 p-4">
               <div className="mx-auto max-w-2xl space-y-2">
-                {activeView === "general" && (
+                {activeView === "public" && (
                   <p className="text-xs text-zinc-500">Sending to everyone (General Chat)</p>
                 )}
                 {activeView === "direct" && activeDirectPeerId && (
@@ -727,7 +744,7 @@ export default function Home() {
                       }
                     }}
                     placeholder={
-                      activeView === "general"
+                      activeView === "public"
                         ? "Message everyone… (Enter to send)"
                         : activeDirectPeerId
                           ? "Private message… (Enter to send)"
