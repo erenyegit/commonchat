@@ -2,17 +2,21 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
-  webpack: (config, { isServer }) => {
+  webpack: (config) => {
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
       layers: true,
     };
-    // Resolve 'commonchat-core' to local src so Vercel never looks in node_modules
+    const commonchatCorePath = path.resolve(process.cwd(), "src/commonchat-core/commonchat_core.js");
     config.resolve = config.resolve ?? {};
     config.resolve.alias = {
-      ...config.resolve.alias,
-      "commonchat-core": path.resolve(__dirname, "src/commonchat-core/commonchat_core.js"),
+      "commonchat-core": commonchatCorePath,
+      ...(config.resolve.alias || {}),
+    };
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      "commonchat-core": commonchatCorePath,
     };
     return config;
   },
