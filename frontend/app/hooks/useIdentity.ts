@@ -37,6 +37,7 @@ export function useIdentity() {
     create_identity: () => IdentityInstance;
     identity_from_private_hex: (hex: string) => IdentityInstance;
     verify_signature: (pub: string, msg: string, sig: string) => boolean;
+    ed25519_pub_to_x25519_pub: (ed25519PubHex: string) => string;
   };
   const coreRef = useRef<CoreModule | null>(null);
 
@@ -134,6 +135,11 @@ export function useIdentity() {
     return id.decrypt_from_peer(senderX25519PubHex, encryptedHex);
   }, []);
 
+  const ed25519PubToX25519Pub = useCallback((ed25519PubHex: string): string | null => {
+    const c = coreRef.current;
+    if (!c) return null;
+    return c.ed25519_pub_to_x25519_pub(ed25519PubHex);
+  }, []);
 
   const updateDisplayName = useCallback((newName: string) => {
     setDisplayName(newName);
@@ -154,6 +160,7 @@ export function useIdentity() {
   getX25519PublicKey,
   encryptForPeer,
   decryptFromPeer,
+  ed25519PubToX25519Pub,
   isReady,
   isInitialized,
   initializeWithDisplayName,

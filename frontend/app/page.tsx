@@ -12,808 +12,995 @@ type MessageType = "general" | "private";
 export type PublicRoomId = "general" | "commonware" | "sloth";
 
 const PUBLIC_ROOMS: { id: PublicRoomId; label: string; emoji: string }[] = [
-  { id: "general", label: "General Chat", emoji: "🌐" },
-  { id: "commonware", label: "Commonware Community", emoji: "🦀" },
-  { id: "sloth", label: "Celestine Sloth Community", emoji: "🦥" },
+	{ id: "general", label: "General Chat", emoji: "🌐" },
+	{ id: "commonware", label: "Commonware Community", emoji: "🦀" },
+	{ id: "sloth", label: "Celestine Sloth Community", emoji: "🦥" },
 ];
 
 interface ChatMessage {
-  id: string;
-  text: string;
-  signatureHex: string;
-  fromMe: boolean;
-  displayName: string;
-  peerId: string;
-  recipient: string;
-  at: number;
-  type?: MessageType;
-  roomId?: string;
+	id: string;
+	text: string;
+	signatureHex: string;
+	fromMe: boolean;
+	displayName: string;
+	peerId: string;
+	recipient: string;
+	at: number;
+	type?: MessageType;
+	roomId?: string;
 }
 
 function formatTime(at: number): string {
-  const d = new Date(at);
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+	const d = new Date(at);
+	return d.toLocaleTimeString(undefined, {
+		hour: "2-digit",
+		minute: "2-digit",
+	});
 }
 
 function truncate(s: string, len = 12) {
-  if (s.length <= len) return s;
-  return s.slice(0, len) + "…";
+	if (s.length <= len) return s;
+	return s.slice(0, len) + "…";
 }
 
 function peerIdShort(peerId: string, head = 4, tail = 4): string {
-  const s = peerId.replace(/^0x/i, "");
-  if (s.length <= head + tail) return peerId;
-  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+	const s = peerId.replace(/^0x/i, "");
+	if (s.length <= head + tail) return peerId;
+	return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
 function getPeerByPubKey(
-  pubKey: string,
-  peers: { id: string; name: string; pubKey: string }[]
+	pubKey: string,
+	peers: { id: string; name: string; pubKey: string }[],
 ) {
-  return peers.find((p) => p.pubKey === pubKey);
+	return peers.find((p) => p.pubKey === pubKey);
 }
 
 function getPeerByName(
-  name: string,
-  peers: { id: string; name: string; pubKey: string }[]
+	name: string,
+	peers: { id: string; name: string; pubKey: string }[],
 ) {
-  const q = name.trim().toLowerCase();
-  if (!q) return null;
-  return peers.find((p) => p.name.toLowerCase() === q) ?? null;
+	const q = name.trim().toLowerCase();
+	if (!q) return null;
+	return peers.find((p) => p.name.toLowerCase() === q) ?? null;
 }
 
 function resolveRecipientId(
-  raw: string,
-  peers: { id: string; name: string; pubKey: string }[]
+	raw: string,
+	peers: { id: string; name: string; pubKey: string }[],
 ): string {
-  const r = raw.trim();
-  if (!r) return "";
-  const peer = getPeerByName(r, peers);
-  return peer ? peer.pubKey : r;
+	const r = raw.trim();
+	if (!r) return "";
+	const peer = getPeerByName(r, peers);
+	return peer ? peer.pubKey : r;
 }
 
 function resolveRecipientDisplay(
-  recipientId: string,
-  peers: { id: string; name: string; pubKey: string }[]
+	recipientId: string,
+	peers: { id: string; name: string; pubKey: string }[],
 ): string {
-  if (!recipientId) return "";
-  const peer = getPeerByPubKey(recipientId, peers);
-  return peer ? `${peer.name} (${truncate(recipientId, 10)})` : truncate(recipientId, 24);
+	if (!recipientId) return "";
+	const peer = getPeerByPubKey(recipientId, peers);
+	return peer
+		? `${peer.name} (${truncate(recipientId, 10)})`
+		: truncate(recipientId, 24);
 }
 
 function resolveRecipientLabel(
-  recipientId: string,
-  peers: { id: string; name: string; pubKey: string }[]
+	recipientId: string,
+	peers: { id: string; name: string; pubKey: string }[],
 ): string {
-  if (!recipientId) return "Broadcast";
-  const peer = getPeerByPubKey(recipientId, peers);
-  return peer ? peer.name : truncate(recipientId, 16);
+	if (!recipientId) return "Broadcast";
+	const peer = getPeerByPubKey(recipientId, peers);
+	return peer ? peer.name : truncate(recipientId, 16);
 }
 
 function getPreviousPeers(
-  messages: ChatMessage[],
-  myPeerId: string,
-  onlinePeers: { id: string; name: string; pubKey: string }[]
+	messages: ChatMessage[],
+	myPeerId: string,
+	onlinePeers: { id: string; name: string; pubKey: string }[],
 ): { id: string; name: string; pubKey: string; online: boolean }[] {
-  const peerNames = new Map<string, string>();
-  for (const m of messages) {
-    const other = m.fromMe ? (m.recipient !== "Broadcast" ? m.recipient : null) : m.peerId;
-    if (other && other !== myPeerId) {
-      if (!m.fromMe && m.displayName) peerNames.set(other, m.displayName);
-    }
-  }
-  const seen = new Set<string>();
-  const result: { id: string; name: string; pubKey: string; online: boolean }[] = [];
-  for (const m of messages) {
-    const other = m.fromMe ? (m.recipient !== "Broadcast" ? m.recipient : null) : m.peerId;
-    if (other && other !== myPeerId && !seen.has(other)) {
-      seen.add(other);
-      const online = onlinePeers.find((p) => p.pubKey === other);
-      result.push({
-        id: other,
-        pubKey: other,
-        name: online?.name ?? peerNames.get(other) ?? truncate(other, 12),
-        online: !!online,
-      });
-    }
-  }
-  return result.sort((a, b) => (a.online === b.online ? 0 : a.online ? -1 : 1));
+	const peerNames = new Map<string, string>();
+	for (const m of messages) {
+		const other = m.fromMe
+			? m.recipient !== "Broadcast"
+				? m.recipient
+				: null
+			: m.peerId;
+		if (other && other !== myPeerId) {
+			if (!m.fromMe && m.displayName) peerNames.set(other, m.displayName);
+		}
+	}
+	const seen = new Set<string>();
+	const result: {
+		id: string;
+		name: string;
+		pubKey: string;
+		online: boolean;
+	}[] = [];
+	for (const m of messages) {
+		const other = m.fromMe
+			? m.recipient !== "Broadcast"
+				? m.recipient
+				: null
+			: m.peerId;
+		if (other && other !== myPeerId && !seen.has(other)) {
+			seen.add(other);
+			const online = onlinePeers.find((p) => p.pubKey === other);
+			result.push({
+				id: other,
+				pubKey: other,
+				name: online?.name ?? peerNames.get(other) ?? truncate(other, 12),
+				online: !!online,
+			});
+		}
+	}
+	return result.sort((a, b) => (a.online === b.online ? 0 : a.online ? -1 : 1));
 }
 
 function getDirectMessagesPeerList(
-  onlinePeers: { id: string; name: string; pubKey: string }[],
-  previousPeers: { id: string; name: string; pubKey: string; online: boolean }[],
-  myPeerId: string
+	onlinePeers: { id: string; name: string; pubKey: string }[],
+	previousPeers: {
+		id: string;
+		name: string;
+		pubKey: string;
+		online: boolean;
+	}[],
+	myPeerId: string,
 ): { id: string; name: string; pubKey: string; online: boolean }[] {
-  const byKey = new Map<string, { id: string; name: string; pubKey: string; online: boolean }>();
-  for (const p of onlinePeers) {
-    if (p.pubKey === myPeerId) continue;
-    byKey.set(p.pubKey, { id: p.id, name: p.name, pubKey: p.pubKey, online: true });
-  }
-  for (const p of previousPeers) {
-    if (p.pubKey === myPeerId) continue;
-    if (!byKey.has(p.pubKey)) byKey.set(p.pubKey, { ...p, online: false });
-  }
-  return Array.from(byKey.values()).sort((a, b) => (a.online === b.online ? 0 : a.online ? -1 : 1));
+	const byKey = new Map<
+		string,
+		{ id: string; name: string; pubKey: string; online: boolean }
+	>();
+	for (const p of onlinePeers) {
+		if (p.pubKey === myPeerId) continue;
+		byKey.set(p.pubKey, {
+			id: p.id,
+			name: p.name,
+			pubKey: p.pubKey,
+			online: true,
+		});
+	}
+	for (const p of previousPeers) {
+		if (p.pubKey === myPeerId) continue;
+		if (!byKey.has(p.pubKey)) byKey.set(p.pubKey, { ...p, online: false });
+	}
+	return Array.from(byKey.values()).sort((a, b) =>
+		a.online === b.online ? 0 : a.online ? -1 : 1,
+	);
 }
 
 export default function Home() {
-  const {
-    displayName,
-    setDisplayName,
-    peerId,
-    signMessage,
-    verifySignature,
-    isReady,
-    isInitialized,
-    initializeWithDisplayName,
-    error,
-  } = useIdentity();
+	const {
+		displayName,
+		setDisplayName,
+		peerId,
+		signMessage,
+		verifySignature,
+		isReady,
+		isInitialized,
+		initializeWithDisplayName,
+		encryptForPeer,
+		decryptFromPeer,
+		ed25519PubToX25519Pub,
+		getX25519PublicKey,
+		error,
+	} = useIdentity();
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [editingName, setEditingName] = useState(false);
-  const [editNameValue, setEditNameValue] = useState(displayName);
+	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	const [input, setInput] = useState("");
+	const [editingName, setEditingName] = useState(false);
+	const [editNameValue, setEditNameValue] = useState(displayName);
 
-  const [operatorName, setOperatorName] = useState("");
-  const [modalClosing, setModalClosing] = useState(false);
-  const [selectedRecipient, setSelectedRecipient] = useState<string>("");
-  const [p2pNotification, setP2pNotification] = useState(false);
-  const [onlinePeers, setOnlinePeers] = useState<{ id: string; name: string; pubKey: string }[]>([]);
-  const [relayConnected, setRelayConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+	const [operatorName, setOperatorName] = useState("");
+	const [modalClosing, setModalClosing] = useState(false);
+	const [selectedRecipient, setSelectedRecipient] = useState<string>("");
+	const [p2pNotification, setP2pNotification] = useState(false);
+	const [onlinePeers, setOnlinePeers] = useState<
+		{ id: string; name: string; pubKey: string }[]
+	>([]);
+	const [relayConnected, setRelayConnected] = useState(false);
+	const socketRef = useRef<Socket | null>(null);
+	const messagesEndRef = useRef<HTMLDivElement | null>(null);
+	const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
-  type ViewMode = "public" | "direct";
-  const [activeView, setActiveView] = useState<ViewMode>("public");
-  const [activePublicRoomId, setActivePublicRoomId] = useState<PublicRoomId>("general");
-  const [activeDirectPeerId, setActiveDirectPeerId] = useState<string | null>(null);
-  const [unreadPeers, setUnreadPeers] = useState<Set<string>>(new Set());
-  const [tabUnreadCount, setTabUnreadCount] = useState(0);
-  const baseTitleRef = useRef("CommonChat");
-  const activeViewRef = useRef<ViewMode>("public");
-  const activePublicRoomIdRef = useRef<PublicRoomId>("general");
-  const activeDirectPeerIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    activeViewRef.current = activeView;
-    activePublicRoomIdRef.current = activePublicRoomId;
-    activeDirectPeerIdRef.current = activeDirectPeerId;
-  }, [activeView, activePublicRoomId, activeDirectPeerId]);
+	type ViewMode = "public" | "direct";
+	const [activeView, setActiveView] = useState<ViewMode>("public");
+	const [activePublicRoomId, setActivePublicRoomId] =
+		useState<PublicRoomId>("general");
+	const [activeDirectPeerId, setActiveDirectPeerId] = useState<string | null>(
+		null,
+	);
+	const [unreadPeers, setUnreadPeers] = useState<Set<string>>(new Set());
+	const [tabUnreadCount, setTabUnreadCount] = useState(0);
+	const baseTitleRef = useRef("CommonChat");
+	const activeViewRef = useRef<ViewMode>("public");
+	const activePublicRoomIdRef = useRef<PublicRoomId>("general");
+	const activeDirectPeerIdRef = useRef<string | null>(null);
+	useEffect(() => {
+		activeViewRef.current = activeView;
+		activePublicRoomIdRef.current = activePublicRoomId;
+		activeDirectPeerIdRef.current = activeDirectPeerId;
+	}, [activeView, activePublicRoomId, activeDirectPeerId]);
 
-  const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
-  const directMessagesPeerList = getDirectMessagesPeerList(onlinePeers, previousPeers, peerId);
+	const previousPeers = getPreviousPeers(messages, peerId, onlinePeers);
+	const directMessagesPeerList = getDirectMessagesPeerList(
+		onlinePeers,
+		previousPeers,
+		peerId,
+	);
 
-  const isPublicRoomMessage = (m: ChatMessage, roomId: PublicRoomId) => {
-    const t = m.type ?? ((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
-    if (t !== "general" || (m.recipient ?? "Broadcast") !== "Broadcast") return false;
-    const msgRoom = (m.roomId ?? "general") as PublicRoomId;
-    return msgRoom === roomId;
-  };
-  const isPrivateMessageWith = (m: ChatMessage, otherPeerId: string) => {
-    const t = m.type ?? ((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
-    if (t !== "private") return false;
-    return (m.fromMe && (m.recipient ?? "") === otherPeerId) || (!m.fromMe && m.peerId === otherPeerId);
-  };
-  const visibleMessages: ChatMessage[] =
-    activeView === "public"
-      ? messages.filter((m) => isPublicRoomMessage(m, activePublicRoomId))
-      : activeDirectPeerId
-        ? messages.filter((m) => isPrivateMessageWith(m, activeDirectPeerId))
-        : [];
+	const isPublicRoomMessage = (m: ChatMessage, roomId: PublicRoomId) => {
+		const t =
+			m.type ??
+			((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
+		if (t !== "general" || (m.recipient ?? "Broadcast") !== "Broadcast")
+			return false;
+		const msgRoom = (m.roomId ?? "general") as PublicRoomId;
+		return msgRoom === roomId;
+	};
+	const isPrivateMessageWith = (m: ChatMessage, otherPeerId: string) => {
+		const t =
+			m.type ??
+			((m.recipient ?? "Broadcast") === "Broadcast" ? "general" : "private");
+		if (t !== "private") return false;
+		return (
+			(m.fromMe && (m.recipient ?? "") === otherPeerId) ||
+			(!m.fromMe && m.peerId === otherPeerId)
+		);
+	};
+	const visibleMessages: ChatMessage[] =
+		activeView === "public"
+			? messages.filter((m) => isPublicRoomMessage(m, activePublicRoomId))
+			: activeDirectPeerId
+				? messages.filter((m) => isPrivateMessageWith(m, activeDirectPeerId))
+				: [];
 
-  const openPublicRoom = useCallback((roomId: PublicRoomId) => {
-    setActiveView("public");
-    setActivePublicRoomId(roomId);
-    setActiveDirectPeerId(null);
-    setSelectedRecipient("");
-  }, []);
-  const openDirectWith = useCallback((peerPubKey: string) => {
-    setActiveView("direct");
-    setActiveDirectPeerId(peerPubKey);
-    setSelectedRecipient(peerPubKey);
-    setUnreadPeers((prev) => {
-      const next = new Set(prev);
-      next.delete(peerPubKey);
-      return next;
-    });
-  }, []);
+	const openPublicRoom = useCallback((roomId: PublicRoomId) => {
+		setActiveView("public");
+		setActivePublicRoomId(roomId);
+		setActiveDirectPeerId(null);
+		setSelectedRecipient("");
+	}, []);
+	const openDirectWith = useCallback((peerPubKey: string) => {
+		setActiveView("direct");
+		setActiveDirectPeerId(peerPubKey);
+		setSelectedRecipient(peerPubKey);
+		setUnreadPeers((prev) => {
+			const next = new Set(prev);
+			next.delete(peerPubKey);
+			return next;
+		});
+	}, []);
 
-  const storageKey = peerId ? `${MESSAGES_STORAGE_KEY}_${peerId}` : null;
+	const storageKey = peerId ? `${MESSAGES_STORAGE_KEY}_${peerId}` : null;
 
-  useEffect(() => {
-    if (!storageKey || typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as ChatMessage[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, [storageKey]);
+	useEffect(() => {
+		if (!storageKey || typeof window === "undefined") return;
+		try {
+			const raw = localStorage.getItem(storageKey);
+			if (raw) {
+				const parsed = JSON.parse(raw) as ChatMessage[];
+				if (Array.isArray(parsed) && parsed.length > 0) {
+					setMessages(parsed);
+				}
+			}
+		} catch {
+			// ignore
+		}
+	}, [storageKey]);
 
-  useEffect(() => {
-    if (!storageKey || messages.length === 0) return;
-    try {
-      const toStore = messages.slice(-500);
-      localStorage.setItem(storageKey, JSON.stringify(toStore));
-    } catch {
-      // quota or parse error
-    }
-  }, [storageKey, messages]);
+	useEffect(() => {
+		if (!storageKey || messages.length === 0) return;
+		try {
+			const toStore = messages.slice(-500);
+			localStorage.setItem(storageKey, JSON.stringify(toStore));
+		} catch {
+			// quota or parse error
+		}
+	}, [storageKey, messages]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [visibleMessages]);
+	useEffect(() => {
+		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, [visibleMessages]);
 
-  const handleInitialize = useCallback(() => {
-    const name = operatorName.trim();
-    if (!name) return;
-    setModalClosing(true);
-    setTimeout(() => {
-      initializeWithDisplayName(name);
-      setModalClosing(false);
-    }, 220);
-  }, [operatorName, initializeWithDisplayName]);
+	const handleInitialize = useCallback(() => {
+		const name = operatorName.trim();
+		if (!name) return;
+		setModalClosing(true);
+		setTimeout(() => {
+			initializeWithDisplayName(name);
+			setModalClosing(false);
+		}, 220);
+	}, [operatorName, initializeWithDisplayName]);
 
-  const handleSignAndSend = useCallback(() => {
-    const text = input.trim();
-    if (!text || !isInitialized) return;
-    const sig = signMessage(text);
-    if (sig == null) return;
-    const isPrivate = activeView === "direct" && !!activeDirectPeerId;
-    const recipient = isPrivate
-      ? (activeDirectPeerId || resolveRecipientId(selectedRecipient, onlinePeers) || selectedRecipient.trim() || "")
-      : "Broadcast";
-    if (isPrivate && !recipient) return;
-    const msg: ChatMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      text,
-      signatureHex: sig,
-      fromMe: true,
-      displayName,
-      peerId,
-      recipient: recipient || "Broadcast",
-      at: Date.now(),
-      type: isPrivate ? "private" : "general",
-      roomId: activeView === "public" ? activePublicRoomId : undefined,
-    };
-    socketRef.current?.emit("message", msg);
-    setMessages((prev) => [...prev, msg]);
-    setInput("");
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
-  }, [input, isInitialized, signMessage, displayName, peerId, activeView, activePublicRoomId, activeDirectPeerId, selectedRecipient, onlinePeers]);
+	const handleSignAndSend = useCallback(() => {
+		const text = input.trim();
+		if (!text || !isInitialized) return;
 
-  useEffect(() => {
-    if (!isInitialized || !peerId || !displayName) return;
-    const socket = io(RELAY_URL, { autoConnect: true });
-    socketRef.current = socket;
+		const isPrivate = activeView === "direct" && !!activeDirectPeerId;
+		const recipient = isPrivate
+			? activeDirectPeerId ||
+				resolveRecipientId(selectedRecipient, onlinePeers) ||
+				selectedRecipient.trim() ||
+				""
+			: "Broadcast";
+		if (isPrivate && !recipient) return;
 
-    socket.on("connect", () => {
-      setRelayConnected(true);
-      socket.emit("register", { peerId, displayName });
-    });
-    socket.on("disconnect", () => setRelayConnected(false));
+		// For DMs: convert recipient Ed25519 → X25519, encrypt, sign ciphertext
+		// For public: sign plaintext directly
+		let wireText: string;
+		if (isPrivate) {
+			const recipientX25519 = ed25519PubToX25519Pub(recipient);
+			if (!recipientX25519) return;
+			const cipherText = encryptForPeer(recipientX25519, text);
+			if (!cipherText) return;
+			wireText = cipherText;
+		} else {
+			wireText = text;
+		}
 
-    socket.on("online_list", (list: { id: string; name: string; pubKey: string }[]) => {
-      setOnlinePeers(Array.isArray(list) ? list : []);
-    });
-    socket.on(
-      "user_online",
-      (user: { peerId?: string; id?: string; name?: string; pubKey?: string; displayName?: string }) => {
-        const pId = user.peerId ?? user.id ?? user.pubKey;
-        if (!pId || pId === peerId) return;
-        const name = user.name ?? user.displayName ?? truncate(pId, 12);
-        setOnlinePeers((prev) => {
-          const without = prev.filter((p) => p.pubKey !== pId);
-          return [...without, { id: pId, name, pubKey: pId }];
-        });
-      }
-    );
-    socket.on("user_offline", (data: { peerId: string }) => {
-      if (data.peerId === peerId) return;
-      setOnlinePeers((prev) => prev.filter((p) => p.pubKey !== data.peerId));
-    });
+		const sig = signMessage(wireText);
+		if (sig == null) return;
 
-    socket.on("message", async (chatMsg: ChatMessage) => {
-      const myId = peerId;
-      console.log("Incoming message:", chatMsg);
+		const msg: ChatMessage = {
+			id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+			text: wireText,
+			signatureHex: sig,
+			fromMe: true,
+			displayName,
+			peerId,
+			recipient: recipient || "Broadcast",
+			at: Date.now(),
+			type: isPrivate ? "private" : "general",
+			roomId: activeView === "public" ? activePublicRoomId : undefined,
+		};
+		socketRef.current?.emit("message", msg);
+		// Store plaintext locally so our own DMs display correctly
+		setMessages((prev) => [...prev, { ...msg, text }]);
+		setInput("");
+		requestAnimationFrame(() => {
+			messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+		});
+	}, [
+		input,
+		isInitialized,
+		signMessage,
+		displayName,
+		peerId,
+		activeView,
+		activePublicRoomId,
+		activeDirectPeerId,
+		selectedRecipient,
+		onlinePeers,
+		encryptForPeer,
+		ed25519PubToX25519Pub,
+	]);
 
-      if (!chatMsg?.text || !chatMsg?.signatureHex || !chatMsg?.peerId) return;
-      const valid = await verifySignature(
-        chatMsg.peerId,
-        chatMsg.text,
-        chatMsg.signatureHex
-      );
-      if (!valid) {
-        console.log("SIGNATURE_ERROR");
-        return;
-      }
-      const recipient = chatMsg.recipient ?? "Broadcast";
-      const msgType: MessageType = chatMsg.type ?? (recipient === "Broadcast" ? "general" : "private");
-      if (msgType === "private" && recipient !== myId) {
-        return;
-      }
-      const isForMe = recipient === "Broadcast" || recipient === myId;
-      if (!isForMe) {
-        console.log(`ID_MISMATCH: Incoming [${recipient}], Mine [${myId}]`);
-        return;
-      }
-      const isFromMe = chatMsg.peerId === myId;
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === chatMsg.id)) return prev;
-        return [
-          ...prev,
-          {
-            ...chatMsg,
-            fromMe: isFromMe,
-            type: msgType,
-          },
-        ];
-      });
-      if (!isFromMe) {
-        setP2pNotification(true);
-        if (typeof document !== "undefined" && document.hidden) {
-          setTabUnreadCount((c) => c + 1);
-          if (typeof window !== "undefined" && window.AudioContext) {
-            try {
-              const ctx = new window.AudioContext();
-              const o = ctx.createOscillator();
-              const g = ctx.createGain();
-              o.connect(g);
-              g.connect(ctx.destination);
-              o.frequency.value = 880;
-              o.type = "sine";
-              g.gain.setValueAtTime(0.08, ctx.currentTime);
-              g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-              o.start(ctx.currentTime);
-              o.stop(ctx.currentTime + 0.08);
-            } catch {
-              // ignore
-            }
-          }
-        }
-        if (recipient === myId && chatMsg.peerId !== myId) {
-          setUnreadPeers((prev) => {
-            if (activeViewRef.current === "direct" && activeDirectPeerIdRef.current === chatMsg.peerId) return prev;
-            const next = new Set(prev);
-            next.add(chatMsg.peerId);
-            return next;
-          });
-        }
-      }
-    });
+	useEffect(() => {
+		if (!isInitialized || !peerId || !displayName) return;
+		const socket = io(RELAY_URL, { autoConnect: true });
+		socketRef.current = socket;
 
-    return () => {
-      socket.removeAllListeners();
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [isInitialized, peerId, displayName, verifySignature]);
+		socket.on("connect", () => {
+			setRelayConnected(true);
+			socket.emit("register", { peerId, displayName });
+		});
+		socket.on("disconnect", () => setRelayConnected(false));
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    baseTitleRef.current = document.title || "CommonChat";
-  }, []);
+		socket.on(
+			"online_list",
+			(list: { id: string; name: string; pubKey: string }[]) => {
+				setOnlinePeers(Array.isArray(list) ? list : []);
+			},
+		);
+		socket.on(
+			"user_online",
+			(user: {
+				peerId?: string;
+				id?: string;
+				name?: string;
+				pubKey?: string;
+				displayName?: string;
+			}) => {
+				const pId = user.peerId ?? user.id ?? user.pubKey;
+				if (!pId || pId === peerId) return;
+				const name = user.name ?? user.displayName ?? truncate(pId, 12);
+				setOnlinePeers((prev) => {
+					const without = prev.filter((p) => p.pubKey !== pId);
+					return [...without, { id: pId, name, pubKey: pId }];
+				});
+			},
+		);
+		socket.on("user_offline", (data: { peerId: string }) => {
+			if (data.peerId === peerId) return;
+			setOnlinePeers((prev) => prev.filter((p) => p.pubKey !== data.peerId));
+		});
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.title = tabUnreadCount > 0 ? `(${tabUnreadCount}) New Message - CommonChat` : baseTitleRef.current;
-  }, [tabUnreadCount]);
+		socket.on("message", async (chatMsg: ChatMessage) => {
+			const myId = peerId;
+			console.log("Incoming message:", chatMsg);
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const onVisibility = () => {
-      if (!document.hidden) {
-        setTabUnreadCount(0);
-        document.title = baseTitleRef.current;
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
+			if (!chatMsg?.text || !chatMsg?.signatureHex || !chatMsg?.peerId) return;
+			const valid = await verifySignature(
+				chatMsg.peerId,
+				chatMsg.text,
+				chatMsg.signatureHex,
+			);
+			if (!valid) {
+				console.log("SIGNATURE_ERROR");
+				return;
+			}
+			const recipient = chatMsg.recipient ?? "Broadcast";
+			const msgType: MessageType =
+				chatMsg.type ?? (recipient === "Broadcast" ? "general" : "private");
+			if (msgType === "private" && recipient !== myId) {
+				return;
+			}
+			const isForMe = recipient === "Broadcast" || recipient === myId;
+			if (!isForMe) {
+				console.log(`ID_MISMATCH: Incoming [${recipient}], Mine [${myId}]`);
+				return;
+			}
+			const isFromMe = chatMsg.peerId === myId;
 
-  useEffect(() => {
-    if (!p2pNotification) return;
-    const t = setTimeout(() => setP2pNotification(false), 4000);
-    return () => clearTimeout(t);
-  }, [p2pNotification]);
+			// Decrypt DMs: convert sender's Ed25519 peerId → X25519, then decrypt
+			let displayText = chatMsg.text;
+			if (msgType === "private" && !isFromMe) {
+				const senderX25519 = ed25519PubToX25519Pub(chatMsg.peerId);
+				if (senderX25519) {
+					const plaintext = decryptFromPeer(senderX25519, chatMsg.text);
+					if (plaintext) {
+						displayText = plaintext;
+					} else {
+						console.log("DECRYPTION_FAILED for msg:", chatMsg.id);
+					}
+				}
+			}
 
-  const openEditName = () => {
-    setEditNameValue(displayName);
-    setEditingName(true);
-  };
-  const saveDisplayName = () => {
-    const v = editNameValue.trim();
-    if (v) setDisplayName(v);
-    setEditingName(false);
-  };
+			setMessages((prev) => {
+				if (prev.some((m) => m.id === chatMsg.id)) return prev;
+				return [
+					...prev,
+					{
+						...chatMsg,
+						text: displayText,
+						fromMe: isFromMe,
+						type: msgType,
+					},
+				];
+			});
+			if (!isFromMe) {
+				setP2pNotification(true);
+				if (typeof document !== "undefined" && document.hidden) {
+					setTabUnreadCount((c) => c + 1);
+					if (typeof window !== "undefined" && window.AudioContext) {
+						try {
+							const ctx = new window.AudioContext();
+							const o = ctx.createOscillator();
+							const g = ctx.createGain();
+							o.connect(g);
+							g.connect(ctx.destination);
+							o.frequency.value = 880;
+							o.type = "sine";
+							g.gain.setValueAtTime(0.08, ctx.currentTime);
+							g.gain.exponentialRampToValueAtTime(
+								0.001,
+								ctx.currentTime + 0.08,
+							);
+							o.start(ctx.currentTime);
+							o.stop(ctx.currentTime + 0.08);
+						} catch {
+							// ignore
+						}
+					}
+				}
+				if (recipient === myId && chatMsg.peerId !== myId) {
+					setUnreadPeers((prev) => {
+						if (
+							activeViewRef.current === "direct" &&
+							activeDirectPeerIdRef.current === chatMsg.peerId
+						)
+							return prev;
+						const next = new Set(prev);
+						next.add(chatMsg.peerId);
+						return next;
+					});
+				}
+			}
+		});
 
-  const activeUsersCount = onlinePeers.length + 1;
-  const showModal = !isInitialized && isReady && !error;
+		return () => {
+			socket.removeAllListeners();
+			socket.disconnect();
+			socketRef.current = null;
+		};
+	}, [isInitialized, peerId, displayName, verifySignature, decryptFromPeer, ed25519PubToX25519Pub]);
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 font-mono">
-      {/* Full-screen modal when no displayName */}
-      {showModal && (
-        <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md ${
-            modalClosing ? "animate-modal-fade-out" : "animate-modal-fade-in"
-          }`}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-title"
-        >
-          <div
-            className={`mx-4 w-full max-w-md rounded-lg border-2 border-emerald-500 bg-zinc-900/95 px-8 py-10 shadow-2xl shadow-emerald-500/10 ${
-              modalClosing ? "animate-modal-content-out" : "animate-modal-content-in"
-            }`}
-          >
-            <p
-              id="modal-title"
-              className="text-center text-sm font-semibold uppercase tracking-widest text-emerald-400 animate-blink"
-            >
-              ESTABLISHING SECURE CONNECTION
-            </p>
-            <div className="mt-8">
-              <label
-                htmlFor="operator-name"
-                className="block text-xs font-semibold uppercase tracking-wider text-zinc-400"
-              >
-                Enter Operator Name
-              </label>
-              <input
-                id="operator-name"
-                type="text"
-                value={operatorName}
-                onChange={(e) => setOperatorName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleInitialize()}
-                placeholder="Your call sign"
-                className="mt-2 w-full rounded border border-zinc-600 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                autoFocus
-                disabled={modalClosing}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleInitialize}
-              disabled={!operatorName.trim() || modalClosing}
-              className="mt-8 w-full rounded-lg border-2 border-emerald-500 bg-emerald-500/10 py-3 text-sm font-bold uppercase tracking-wider text-emerald-400 transition hover:bg-emerald-500/20 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Initialize
-            </button>
-          </div>
-        </div>
-      )}
+	useEffect(() => {
+		if (typeof document === "undefined") return;
+		baseTitleRef.current = document.title || "CommonChat";
+	}, []);
 
-      {/* Left sidebar — only when initialized */}
-      {isInitialized && (
-        <>
-          <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/80">
-            <div className="border-b border-zinc-800 p-4">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
-                CommonChat
-              </h2>
-              <p className="mt-1 text-xs text-zinc-500">Ed25519 signed</p>
-            </div>
+	useEffect(() => {
+		if (typeof document === "undefined") return;
+		document.title =
+			tabUnreadCount > 0
+				? `(${tabUnreadCount}) New Message - CommonChat`
+				: baseTitleRef.current;
+	}, [tabUnreadCount]);
 
-            <div className="border-b border-zinc-800 p-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                You
-              </h3>
-              {editingName ? (
-                <div className="flex flex-col gap-2">
-                  <input
-                    type="text"
-                    value={editNameValue}
-                    onChange={(e) => setEditNameValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && saveDisplayName()}
-                    className="rounded border border-zinc-600 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={saveDisplayName}
-                    className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-500"
-                  >
-                    Save
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium text-zinc-100">
-                    {displayName || "—"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={openEditName}
-                    className="shrink-0 text-xs text-emerald-400/80 hover:text-emerald-400"
-                  >
-                    Edit
-                  </button>
-                </div>
-              )}
-              <p className="mt-1 truncate text-xs text-zinc-500" title={peerId}>
-                {truncate(peerId, 20)}
-              </p>
-            </div>
+	useEffect(() => {
+		if (typeof document === "undefined") return;
+		const onVisibility = () => {
+			if (!document.hidden) {
+				setTabUnreadCount(0);
+				document.title = baseTitleRef.current;
+			}
+		};
+		document.addEventListener("visibilitychange", onVisibility);
+		return () => document.removeEventListener("visibilitychange", onVisibility);
+	}, []);
 
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="mb-2 flex items-center justify-between border-b border-zinc-700 px-4 py-2">
-                <span className="text-xs text-zinc-500">
-                  {relayConnected ? "Relay connected" : "Connecting…"}
-                </span>
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    relayConnected ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
-                  }`}
-                  title={relayConnected ? "Relay connected" : "Relay disconnected"}
-                />
-              </div>
-              <div className="flex-1 overflow-auto px-4 pb-4">
-                <h3 className="mb-2 mt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  Public Rooms
-                </h3>
-                <ul className="space-y-1">
-                  {PUBLIC_ROOMS.map((room) => {
-                    const isSelected = activeView === "public" && activePublicRoomId === room.id;
-                    return (
-                      <li key={room.id}>
-                        <button
-                          type="button"
-                          onClick={() => openPublicRoom(room.id)}
-                          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
-                            isSelected ? "border-emerald-500/60 bg-emerald-950/20 text-emerald-400" : "border-zinc-700/50 bg-zinc-800/50 text-zinc-200"
-                          }`}
-                        >
-                          <span className="text-base" aria-hidden>{room.emoji}</span>
-                          <span className="truncate">{room.label}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  Direct Messages
-                </h3>
-                <ul className="space-y-2">
-                    {directMessagesPeerList.length === 0 && (
-                      <p className="text-xs text-zinc-500">
-                        {relayConnected ? "No one else online yet." : "Connecting to relay…"}
-                      </p>
-                    )}
-                    {directMessagesPeerList.map((p) => {
-                      const isSelected = activeDirectPeerId === p.pubKey;
-                      const hasUnread = unreadPeers.has(p.pubKey);
-                      return (
-                        <li
-                          key={p.id}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => openDirectWith(p.pubKey)}
-                          onKeyDown={(e) => e.key === "Enter" && openDirectWith(p.pubKey)}
-                          title={`${p.name}${p.online ? " • Online" : ""}${hasUnread ? " • Unread" : ""}`}
-                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
-                            isSelected ? "border-emerald-500/60 bg-emerald-950/20" : "border-zinc-700/50 bg-zinc-800/50"
-                          }`}
-                        >
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${
-                              p.online ? "animate-pulse bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-zinc-500"
-                            }`}
-                            title={p.online ? "Online" : "Offline"}
-                          />
-                          {hasUnread && (
-                            <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" title="Unread messages" aria-label="Unread" />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm text-zinc-200">{p.name}</p>
-                            <p className="truncate text-xs text-zinc-500">{p.pubKey}</p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                </ul>
-              </div>
-            </div>
-          </aside>
+	useEffect(() => {
+		if (!p2pNotification) return;
+		const t = setTimeout(() => setP2pNotification(false), 4000);
+		return () => clearTimeout(t);
+	}, [p2pNotification]);
 
-          {/* Right: chat */}
-          <main className="flex flex-1 flex-col bg-zinc-950">
-            <div className="border-b border-zinc-800 px-6 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h1 className="text-lg font-semibold text-zinc-300">
-                  {activeView === "public" ? (
-                    <>
-                      <span className="mr-2" aria-hidden>
-                        {PUBLIC_ROOMS.find((r) => r.id === activePublicRoomId)?.emoji ?? "🌐"}
-                      </span>
-                      {PUBLIC_ROOMS.find((r) => r.id === activePublicRoomId)?.label ?? "General Chat"}
-                      <span className="ml-2 text-emerald-400">#{activePublicRoomId}</span>
-                    </>
-                  ) : activeDirectPeerId ? (
-                    <>Direct: <span className="text-emerald-400">{resolveRecipientLabel(activeDirectPeerId, onlinePeers)}</span></>
-                  ) : (
-                    <>Direct Messages</>
-                  )}
-                </h1>
-                {activeView === "public" && (
-                  <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
-                    Active: {activeUsersCount}
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-xs text-zinc-500">
-                {activeView === "public" ? "Public channel. Ed25519 signed." : "Private conversation. End-to-end."}
-              </p>
-            </div>
+	const openEditName = () => {
+		setEditNameValue(displayName);
+		setEditingName(true);
+	};
+	const saveDisplayName = () => {
+		const v = editNameValue.trim();
+		if (v) setDisplayName(v);
+		setEditingName(false);
+	};
 
-            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6">
-              <div className="mx-auto max-w-2xl space-y-3">
-                {activeView === "direct" && !activeDirectPeerId && (
-                  <p className="text-center text-sm text-zinc-500">
-                    Select a conversation from the left.
-                  </p>
-                )}
-                {activeView === "public" && visibleMessages.length === 0 && (
-                  <p className="text-center text-sm text-zinc-500">
-                    No general messages yet. Type below and press Enter or click Send.
-                  </p>
-                )}
-                {activeView === "direct" && activeDirectPeerId && visibleMessages.length === 0 && (
-                  <p className="text-center text-sm text-zinc-500">
-                    Henüz mesaj yok, ilk mesajı sen gönder!
-                  </p>
-                )}
-                {visibleMessages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-md ${
-                        m.fromMe
-                          ? "rounded-br-md bg-emerald-600/90 text-white"
-                          : "rounded-bl-md bg-zinc-700/90 text-zinc-100"
-                      }`}
-                    >
-                      {activeView === "public" && (
-                        <p className={`mb-0.5 font-mono text-[10px] ${m.fromMe ? "text-amber-200/90" : "text-amber-400/80"}`} title={m.peerId}>
-                          {peerIdShort(m.peerId)}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-semibold ${m.fromMe ? "text-emerald-100" : "text-zinc-300"}`}>
-                          {m.displayName}
-                        </span>
-                        {(m.recipient ?? "Broadcast") !== "Broadcast" && (
-                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${m.fromMe ? "bg-emerald-500/30 text-emerald-100" : "bg-zinc-600/50 text-zinc-400"}`}>
-                            E2E
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-                        {m.text}
-                      </p>
-                      <p className={`mt-1 text-[11px] ${m.fromMe ? "text-emerald-200/80" : "text-zinc-500"}`}>
-                        {formatTime(m.at)}
-                      </p>
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-[10px] opacity-70">Signature</summary>
-                        <p className="mt-1 break-all font-mono text-[10px] opacity-80">
-                          {m.signatureHex}
-                        </p>
-                      </details>
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
+	const activeUsersCount = onlinePeers.length + 1;
+	const showModal = !isInitialized && isReady && !error;
 
-            <div className="border-t border-zinc-800 p-4">
-              <div className="mx-auto max-w-2xl space-y-2">
-                {activeView === "public" && (
-                  <p className="text-xs text-zinc-500">Sending to everyone (General Chat)</p>
-                )}
-                {activeView === "direct" && activeDirectPeerId && (
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-                      To: {resolveRecipientLabel(activeDirectPeerId, onlinePeers)} (E2E)
-                    </span>
-                  </div>
-                )}
-                {activeView === "direct" && !activeDirectPeerId && (
-                  <p className="text-xs text-zinc-500">Select a conversation to send a message</p>
-                )}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSignAndSend();
-                      }
-                    }}
-                    placeholder={
-                      activeView === "public"
-                        ? "Message everyone… (Enter to send)"
-                        : activeDirectPeerId
-                          ? "Private message… (Enter to send)"
-                          : "Select a conversation first"
-                    }
-                    disabled={activeView === "direct" && !activeDirectPeerId}
-                    className="flex-1 rounded-xl border border-zinc-600 bg-zinc-800/80 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSignAndSend}
-                    disabled={!input.trim() || (activeView === "direct" && !activeDirectPeerId)}
-                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-500 hover:shadow-emerald-500/30 disabled:opacity-50 disabled:shadow-none"
-                    title="Sign &amp; Send"
-                  >
-                    <Send className="h-5 w-5" aria-hidden />
-                    <span className="hidden sm:inline">Send</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </main>
-        </>
-      )}
+	return (
+		<div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 font-mono">
+			{/* Full-screen modal when no displayName */}
+			{showModal && (
+				<div
+					className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md ${
+						modalClosing ? "animate-modal-fade-out" : "animate-modal-fade-in"
+					}`}
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="modal-title"
+				>
+					<div
+						className={`mx-4 w-full max-w-md rounded-lg border-2 border-emerald-500 bg-zinc-900/95 px-8 py-10 shadow-2xl shadow-emerald-500/10 ${
+							modalClosing
+								? "animate-modal-content-out"
+								: "animate-modal-content-in"
+						}`}
+					>
+						<p
+							id="modal-title"
+							className="text-center text-sm font-semibold uppercase tracking-widest text-emerald-400 animate-blink"
+						>
+							ESTABLISHING SECURE CONNECTION
+						</p>
+						<div className="mt-8">
+							<label
+								htmlFor="operator-name"
+								className="block text-xs font-semibold uppercase tracking-wider text-zinc-400"
+							>
+								Enter Operator Name
+							</label>
+							<input
+								id="operator-name"
+								type="text"
+								value={operatorName}
+								onChange={(e) => setOperatorName(e.target.value)}
+								onKeyDown={(e) => e.key === "Enter" && handleInitialize()}
+								placeholder="Your call sign"
+								className="mt-2 w-full rounded border border-zinc-600 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+								autoFocus
+								disabled={modalClosing}
+							/>
+						</div>
+						<button
+							type="button"
+							onClick={handleInitialize}
+							disabled={!operatorName.trim() || modalClosing}
+							className="mt-8 w-full rounded-lg border-2 border-emerald-500 bg-emerald-500/10 py-3 text-sm font-bold uppercase tracking-wider text-emerald-400 transition hover:bg-emerald-500/20 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							Initialize
+						</button>
+					</div>
+				</div>
+			)}
 
-      {/* Loading while WASM/identity check runs */}
-      {!isReady && !error && (
-        <div className="flex flex-1 items-center justify-center text-zinc-500">
-          Loading…
-        </div>
-      )}
-      {error && (
-        <div className="flex flex-1 items-center justify-center text-red-400">
-          {error}
-        </div>
-      )}
+			{/* Left sidebar — only when initialized */}
+			{isInitialized && (
+				<>
+					<aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/80">
+						<div className="border-b border-zinc-800 p-4">
+							<h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
+								CommonChat
+							</h2>
+							<p className="mt-1 text-xs text-zinc-500">Ed25519 signed</p>
+						</div>
 
-      {/* New P2P message notification - bottom right */}
-      {p2pNotification && (
-        <div className="fixed bottom-4 right-4 z-50 animate-modal-content-in rounded-lg border border-emerald-500/60 bg-zinc-900/95 px-4 py-3 shadow-lg shadow-emerald-500/10">
-          <p className="text-sm font-medium text-emerald-400">
-            New P2P Message Received
-          </p>
-        </div>
-      )}
+						<div className="border-b border-zinc-800 p-4">
+							<h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+								You
+							</h3>
+							{editingName ? (
+								<div className="flex flex-col gap-2">
+									<input
+										type="text"
+										value={editNameValue}
+										onChange={(e) => setEditNameValue(e.target.value)}
+										onKeyDown={(e) => e.key === "Enter" && saveDisplayName()}
+										className="rounded border border-zinc-600 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+										autoFocus
+									/>
+									<button
+										type="button"
+										onClick={saveDisplayName}
+										className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+									>
+										Save
+									</button>
+								</div>
+							) : (
+								<div className="flex items-center justify-between gap-2">
+									<span className="truncate text-sm font-medium text-zinc-100">
+										{displayName || "—"}
+									</span>
+									<button
+										type="button"
+										onClick={openEditName}
+										className="shrink-0 text-xs text-emerald-400/80 hover:text-emerald-400"
+									>
+										Edit
+									</button>
+								</div>
+							)}
+							<p className="mt-1 truncate text-xs text-zinc-500" title={peerId}>
+								{truncate(peerId, 20)}
+							</p>
+						</div>
 
-      {/* Built by - minimal signature */}
-      <div className="fixed bottom-3 right-3 z-30 select-none opacity-60 hover:opacity-90 transition-opacity duration-200">
-        <p className="text-[10px] font-medium text-zinc-500">
-          Built by{" "}
-          <a
-            href="https://x.com/holosko_eth"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-400 hover:text-emerald-400 transition-colors duration-200 hover:drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]"
-          >
-            Holosko
-          </a>
-          {" "}with{" "}
-          <a
-            href="https://github.com/commonwarexyz"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-zinc-400 hover:text-emerald-400 transition-colors duration-200 hover:drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]"
-          >
-            @commonwarexyz
-          </a>
-        </p>
-      </div>
-    </div>
-  );
+						<div className="flex flex-1 flex-col overflow-hidden">
+							<div className="mb-2 flex items-center justify-between border-b border-zinc-700 px-4 py-2">
+								<span className="text-xs text-zinc-500">
+									{relayConnected ? "Relay connected" : "Connecting…"}
+								</span>
+								<span
+									className={`h-2 w-2 rounded-full ${
+										relayConnected
+											? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
+											: "bg-zinc-500"
+									}`}
+									title={
+										relayConnected ? "Relay connected" : "Relay disconnected"
+									}
+								/>
+							</div>
+							<div className="flex-1 overflow-auto px-4 pb-4">
+								<h3 className="mb-2 mt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+									Public Rooms
+								</h3>
+								<ul className="space-y-1">
+									{PUBLIC_ROOMS.map((room) => {
+										const isSelected =
+											activeView === "public" && activePublicRoomId === room.id;
+										return (
+											<li key={room.id}>
+												<button
+													type="button"
+													onClick={() => openPublicRoom(room.id)}
+													className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
+														isSelected
+															? "border-emerald-500/60 bg-emerald-950/20 text-emerald-400"
+															: "border-zinc-700/50 bg-zinc-800/50 text-zinc-200"
+													}`}
+												>
+													<span className="text-base" aria-hidden>
+														{room.emoji}
+													</span>
+													<span className="truncate">{room.label}</span>
+												</button>
+											</li>
+										);
+									})}
+								</ul>
+								<h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+									Direct Messages
+								</h3>
+								<ul className="space-y-2">
+									{directMessagesPeerList.length === 0 && (
+										<p className="text-xs text-zinc-500">
+											{relayConnected
+												? "No one else online yet."
+												: "Connecting to relay…"}
+										</p>
+									)}
+									{directMessagesPeerList.map((p) => {
+										const isSelected = activeDirectPeerId === p.pubKey;
+										const hasUnread = unreadPeers.has(p.pubKey);
+										return (
+											<li
+												key={p.id}
+												role="button"
+												tabIndex={0}
+												onClick={() => openDirectWith(p.pubKey)}
+												onKeyDown={(e) =>
+													e.key === "Enter" && openDirectWith(p.pubKey)
+												}
+												title={`${p.name}${p.online ? " • Online" : ""}${hasUnread ? " • Unread" : ""}`}
+												className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition hover:border-emerald-500/50 hover:bg-zinc-700/30 ${
+													isSelected
+														? "border-emerald-500/60 bg-emerald-950/20"
+														: "border-zinc-700/50 bg-zinc-800/50"
+												}`}
+											>
+												<span
+													className={`h-2 w-2 shrink-0 rounded-full ${
+														p.online
+															? "animate-pulse bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
+															: "bg-zinc-500"
+													}`}
+													title={p.online ? "Online" : "Offline"}
+												/>
+												{hasUnread && (
+													<span
+														className="h-2 w-2 shrink-0 rounded-full bg-red-500"
+														title="Unread messages"
+														aria-label="Unread"
+													/>
+												)}
+												<div className="min-w-0 flex-1">
+													<p className="truncate text-sm text-zinc-200">
+														{p.name}
+													</p>
+													<p className="truncate text-xs text-zinc-500">
+														{p.pubKey}
+													</p>
+												</div>
+											</li>
+										);
+									})}
+								</ul>
+							</div>
+						</div>
+					</aside>
+
+					{/* Right: chat */}
+					<main className="flex flex-1 flex-col bg-zinc-950">
+						<div className="border-b border-zinc-800 px-6 py-3">
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<h1 className="text-lg font-semibold text-zinc-300">
+									{activeView === "public" ? (
+										<>
+											<span className="mr-2" aria-hidden>
+												{PUBLIC_ROOMS.find((r) => r.id === activePublicRoomId)
+													?.emoji ?? "🌐"}
+											</span>
+											{PUBLIC_ROOMS.find((r) => r.id === activePublicRoomId)
+												?.label ?? "General Chat"}
+											<span className="ml-2 text-emerald-400">
+												#{activePublicRoomId}
+											</span>
+										</>
+									) : activeDirectPeerId ? (
+										<>
+											Direct:{" "}
+											<span className="text-emerald-400">
+												{resolveRecipientLabel(activeDirectPeerId, onlinePeers)}
+											</span>
+										</>
+									) : (
+										<>Direct Messages</>
+									)}
+								</h1>
+								{activeView === "public" && (
+									<span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+										Active: {activeUsersCount}
+									</span>
+								)}
+							</div>
+							<p className="mt-0.5 text-xs text-zinc-500">
+								{activeView === "public"
+									? "Public channel. Ed25519 signed."
+									: "Private conversation. End-to-end."}
+							</p>
+						</div>
+
+						<div
+							ref={messagesContainerRef}
+							className="flex-1 overflow-y-auto p-6"
+						>
+							<div className="mx-auto max-w-2xl space-y-3">
+								{activeView === "direct" && !activeDirectPeerId && (
+									<p className="text-center text-sm text-zinc-500">
+										Select a conversation from the left.
+									</p>
+								)}
+								{activeView === "public" && visibleMessages.length === 0 && (
+									<p className="text-center text-sm text-zinc-500">
+										No general messages yet. Type below and press Enter or click
+										Send.
+									</p>
+								)}
+								{activeView === "direct" &&
+									activeDirectPeerId &&
+									visibleMessages.length === 0 && (
+										<p className="text-center text-sm text-zinc-500">
+											Henüz mesaj yok, ilk mesajı sen gönder!
+										</p>
+									)}
+								{visibleMessages.map((m) => (
+									<div
+										key={m.id}
+										className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
+									>
+										<div
+											className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-md ${
+												m.fromMe
+													? "rounded-br-md bg-emerald-600/90 text-white"
+													: "rounded-bl-md bg-zinc-700/90 text-zinc-100"
+											}`}
+										>
+											{activeView === "public" && (
+												<p
+													className={`mb-0.5 font-mono text-[10px] ${m.fromMe ? "text-amber-200/90" : "text-amber-400/80"}`}
+													title={m.peerId}
+												>
+													{peerIdShort(m.peerId)}
+												</p>
+											)}
+											<div className="flex items-center gap-2">
+												<span
+													className={`text-xs font-semibold ${m.fromMe ? "text-emerald-100" : "text-zinc-300"}`}
+												>
+													{m.displayName}
+												</span>
+												{(m.recipient ?? "Broadcast") !== "Broadcast" && (
+													<span
+														className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${m.fromMe ? "bg-emerald-500/30 text-emerald-100" : "bg-zinc-600/50 text-zinc-400"}`}
+													>
+														E2E
+													</span>
+												)}
+											</div>
+											<p className="mt-1 whitespace-pre-wrap break-words text-sm">
+												{m.text}
+											</p>
+											<p
+												className={`mt-1 text-[11px] ${m.fromMe ? "text-emerald-200/80" : "text-zinc-500"}`}
+											>
+												{formatTime(m.at)}
+											</p>
+											<details className="mt-2">
+												<summary className="cursor-pointer text-[10px] opacity-70">
+													Signature
+												</summary>
+												<p className="mt-1 break-all font-mono text-[10px] opacity-80">
+													{m.signatureHex}
+												</p>
+											</details>
+										</div>
+									</div>
+								))}
+								<div ref={messagesEndRef} />
+							</div>
+						</div>
+
+						<div className="border-t border-zinc-800 p-4">
+							<div className="mx-auto max-w-2xl space-y-2">
+								{activeView === "public" && (
+									<p className="text-xs text-zinc-500">
+										Sending to everyone (General Chat)
+									</p>
+								)}
+								{activeView === "direct" && activeDirectPeerId && (
+									<div className="flex items-center gap-2">
+										<span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
+											To:{" "}
+											{resolveRecipientLabel(activeDirectPeerId, onlinePeers)}{" "}
+											(E2E)
+										</span>
+									</div>
+								)}
+								{activeView === "direct" && !activeDirectPeerId && (
+									<p className="text-xs text-zinc-500">
+										Select a conversation to send a message
+									</p>
+								)}
+								<div className="flex gap-2">
+									<input
+										type="text"
+										value={input}
+										onChange={(e) => setInput(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" && !e.shiftKey) {
+												e.preventDefault();
+												handleSignAndSend();
+											}
+										}}
+										placeholder={
+											activeView === "public"
+												? "Message everyone… (Enter to send)"
+												: activeDirectPeerId
+													? "Private message… (Enter to send)"
+													: "Select a conversation first"
+										}
+										disabled={activeView === "direct" && !activeDirectPeerId}
+										className="flex-1 rounded-xl border border-zinc-600 bg-zinc-800/80 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
+									/>
+									<button
+										type="button"
+										onClick={handleSignAndSend}
+										disabled={
+											!input.trim() ||
+											(activeView === "direct" && !activeDirectPeerId)
+										}
+										className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-500 hover:shadow-emerald-500/30 disabled:opacity-50 disabled:shadow-none"
+										title="Sign &amp; Send"
+									>
+										<Send className="h-5 w-5" aria-hidden />
+										<span className="hidden sm:inline">Send</span>
+									</button>
+								</div>
+							</div>
+						</div>
+					</main>
+				</>
+			)}
+
+			{/* Loading while WASM/identity check runs */}
+			{!isReady && !error && (
+				<div className="flex flex-1 items-center justify-center text-zinc-500">
+					Loading…
+				</div>
+			)}
+			{error && (
+				<div className="flex flex-1 items-center justify-center text-red-400">
+					{error}
+				</div>
+			)}
+
+			{/* New P2P message notification - bottom right */}
+			{p2pNotification && (
+				<div className="fixed bottom-4 right-4 z-50 animate-modal-content-in rounded-lg border border-emerald-500/60 bg-zinc-900/95 px-4 py-3 shadow-lg shadow-emerald-500/10">
+					<p className="text-sm font-medium text-emerald-400">
+						New P2P Message Received
+					</p>
+				</div>
+			)}
+
+			{/* Built by - minimal signature */}
+			<div className="fixed bottom-3 right-3 z-30 select-none opacity-60 hover:opacity-90 transition-opacity duration-200">
+				<p className="text-[10px] font-medium text-zinc-500">
+					Built by{" "}
+					<a
+						href="https://x.com/holosko_eth"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-zinc-400 hover:text-emerald-400 transition-colors duration-200 hover:drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+					>
+						Holosko
+					</a>{" "}
+					with{" "}
+					<a
+						href="https://github.com/commonwarexyz"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-zinc-400 hover:text-emerald-400 transition-colors duration-200 hover:drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+					>
+						@commonwarexyz
+					</a>
+				</p>
+			</div>
+		</div>
+	);
 }
