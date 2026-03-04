@@ -2,35 +2,38 @@
 /* eslint-disable */
 
 /**
- * Kimlik: Ed25519 public key + içeride private key (imza için).
+ * Identity: Ed25519 public key + private key (for signing).
  */
 export class CommonwareIdentity {
     private constructor();
     free(): void;
     [Symbol.dispose](): void;
+    decrypt_from_peer(sender_x25519_pub_hex: string, encrypted_hex: string): string;
+    encrypt_for_peer(recipient_x25519_pub_hex: string, plaintext: string): string;
     /**
-     * Private key'i hex string olarak dışa aktarır (localStorage için).
+     * Exports the private key as a hex string (for localStorage).
      */
     export_private_hex(): string;
+    get_x25519_public_key(): string;
     /**
-     * Mesajı Ed25519 ile imzalar; imza hex string olarak döner.
+     * Signs the message with Ed25519; returns the signature as a hex string.
      */
     sign(message: string): string;
     readonly pub_key: string;
 }
 
 /**
- * Yeni rastgele kimlik oluşturur.
+ * Creates a new random identity.
  */
 export function create_identity(): CommonwareIdentity;
 
 /**
- * localStorage'tan okunan private key hex ile kimliği geri yükler.
+ * Restores identity from private key hex (e.g. read from localStorage).
  */
 export function identity_from_private_hex(hex_str: string): CommonwareIdentity;
 
 /**
- * İmzayı doğrular: pub_key_hex ile message üzerindeki signature_hex geçerli mi?
+ * Verifies the signature: is signature_hex valid for message under pub_key_hex?
  */
 export function verify_signature(pub_key_hex: string, message: string, signature_hex: string): boolean;
 
@@ -39,7 +42,10 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_commonwareidentity_free: (a: number, b: number) => void;
+    readonly commonwareidentity_decrypt_from_peer: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+    readonly commonwareidentity_encrypt_for_peer: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly commonwareidentity_export_private_hex: (a: number) => [number, number];
+    readonly commonwareidentity_get_x25519_public_key: (a: number) => [number, number];
     readonly commonwareidentity_pub_key: (a: number) => [number, number];
     readonly commonwareidentity_sign: (a: number, b: number, c: number) => [number, number];
     readonly create_identity: () => number;
@@ -48,10 +54,10 @@ export interface InitOutput {
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __externref_table_dealloc: (a: number) => void;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;
 }
 
