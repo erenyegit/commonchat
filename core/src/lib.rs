@@ -4,6 +4,7 @@ use commonware_cryptography::ed25519;
 use commonware_cryptography::Signer;
 use commonware_cryptography::Verifier;
 use commonware_math::algebra::Random;
+use curve25519_dalek::edwards::CompressedEdwardsY;
 use hex;
 use hkdf::Hkdf;
 use sha2::{Digest, Sha256, Sha512};
@@ -193,6 +194,27 @@ pub fn verify_signature(
     let signature = ed25519::Signature::read_cfg(&mut sig_buf, &())
         .map_err(|e| JsError::new(&format!("decode signature: {:?}", e)))?;
     Ok(public_key.verify(CHAT_NAMESPACE, message.as_bytes(), &signature))
+}
+
+/// Converts any Ed25519 public key to its X25519 equivalent (Edwards → Montgomery).
+#[wasm_bindgen]
+pub fn ed25519_pub_to_x25519_pub(ed25519_pub_hex: &str) -> Result<String, JsError> {
+    let pub_bytes =
+        hex::decode(ed25519_pub_hex).map_err(|e| JsError::new(&format!("invalid hex: {}", e)))?;
+    if pub_bytes.len() != 32 {
+        return Err(JsError::new("ed25519 public key must be 32 bytes"));
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&pub_bytes);
+
+    // Decompress the Edwards point, then convert to Montgomery form
+    let edwards = CompressedEdwardsY(arr);
+    let point = edwards
+        .decompress()
+        .ok_or_else(|| JsError::new("invalid Ed25519 public key point"))?;
+    let montgomery = point.to_montgomery();
+
+    Ok(hex::encode(montgomery.to_bytes()))
 }
 
 /// Restores identity from private key hex (e.g. read from localStorage).

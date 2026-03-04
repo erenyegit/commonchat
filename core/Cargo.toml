@@ -18,6 +18,7 @@ rand = "0.8"
 
 # Cryptography: x25519, ed25519, chacha20poly1305, hkdf, sha2
 x25519-dalek = { version = "2", features = ["static_secrets"] }
+curve25519-dalek = "4"
 chacha20poly1305 = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"

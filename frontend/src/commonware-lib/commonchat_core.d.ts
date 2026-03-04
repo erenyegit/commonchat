@@ -28,6 +28,11 @@ export class CommonwareIdentity {
 export function create_identity(): CommonwareIdentity;
 
 /**
+ * Converts any Ed25519 public key to its X25519 equivalent (Edwards → Montgomery).
+ */
+export function ed25519_pub_to_x25519_pub(ed25519_pub_hex: string): string;
+
+/**
  * Restores identity from private key hex (e.g. read from localStorage).
  */
 export function identity_from_private_hex(hex_str: string): CommonwareIdentity;
@@ -49,6 +54,7 @@ export interface InitOutput {
     readonly commonwareidentity_pub_key: (a: number) => [number, number];
     readonly commonwareidentity_sign: (a: number, b: number, c: number) => [number, number];
     readonly create_identity: () => number;
+    readonly ed25519_pub_to_x25519_pub: (a: number, b: number) => [number, number, number, number];
     readonly identity_from_private_hex: (a: number, b: number) => [number, number, number];
     readonly verify_signature: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly __wbindgen_exn_store: (a: number) => void;

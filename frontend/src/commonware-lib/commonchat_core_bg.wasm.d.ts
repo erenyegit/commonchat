@@ -9,6 +9,7 @@ export const commonwareidentity_get_x25519_public_key: (a: number) => [number, n
 export const commonwareidentity_pub_key: (a: number) => [number, number];
 export const commonwareidentity_sign: (a: number, b: number, c: number) => [number, number];
 export const create_identity: () => number;
+export const ed25519_pub_to_x25519_pub: (a: number, b: number) => [number, number, number, number];
 export const identity_from_private_hex: (a: number, b: number) => [number, number, number];
 export const verify_signature: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
 export const __wbindgen_exn_store: (a: number) => void;
