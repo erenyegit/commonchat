@@ -16,6 +16,12 @@ serde_json = "1.0"
 hex = "0.4"
 rand = "0.8"
 
+# Cryptography: x25519, ed25519, chacha20poly1305, hkdf, sha2
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+
 # Native (non-WASM): tam cryptography + p2p + tokio
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 commonware-cryptography = { path = "../commonware-source/cryptography" }
@@ -24,5 +30,7 @@ tokio = { version = "1", features = ["full"] }
 
 # WASM (tarayıcı): blst yok (sadece ed25519), getrandom "js"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-commonware-cryptography = { path = "../commonware-source/cryptography", default-features = false, features = ["std"] }
+commonware-cryptography = { path = "../commonware-source/cryptography", default-features = false, features = [
+    "std",
+] }
 getrandom = { version = "0.2", features = ["js"] }
