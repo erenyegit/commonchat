@@ -20,13 +20,25 @@ export function useIdentity() {
     sign: (msg: string) => string;
     pub_key: string;
     export_private_hex: () => string;
+    get_x25519_public_key: () => string;
+    encrypt_for_peer: (recipientX25519PubHex: string, plaintext: string) => string;
+    decrypt_from_peer: (senderX25519PubHex: string, encryptedHex: string) => string;
   } | null>(null);
+  type IdentityInstance = {
+    sign: (m: string) => string;
+    pub_key: string;
+    export_private_hex: () => string;
+    get_x25519_public_key: () => string;
+    encrypt_for_peer: (recipientX25519PubHex: string, plaintext: string) => string;
+    decrypt_from_peer: (senderX25519PubHex: string, encryptedHex: string) => string;
+  };
   type CoreModule = {
-  default?: () => Promise<unknown>;
-  create_identity: () => { sign: (m: string) => string; pub_key: string; export_private_hex: () => string };
-  identity_from_private_hex: (hex: string) => { sign: (m: string) => string; pub_key: string; export_private_hex: () => string };
-  verify_signature: (pub: string, msg: string, sig: string) => boolean;
-};
+    default?: () => Promise<unknown>;
+    create_identity: () => IdentityInstance;
+    identity_from_private_hex: (hex: string) => IdentityInstance;
+    verify_signature: (pub: string, msg: string, sig: string) => boolean;
+    ed25519_pub_to_x25519_pub: (ed25519PubHex: string) => string;
+  };
   const coreRef = useRef<CoreModule | null>(null);
 
   const loadStored = useCallback(async () => {
@@ -105,6 +117,30 @@ export function useIdentity() {
     []
   );
 
+  const getX25519PublicKey = useCallback((): string | null => {
+  const id = identityRef.current;
+  if (!id) return null;
+  return id.get_x25519_public_key();
+}, []);
+
+  const encryptForPeer = useCallback((recipientX25519PubHex: string, plaintext: string): string | null => {
+    const id = identityRef.current;
+    if (!id) return null;
+    return id.encrypt_for_peer(recipientX25519PubHex, plaintext);
+  }, []);
+
+  const decryptFromPeer = useCallback((senderX25519PubHex: string, encryptedHex: string): string | null => {
+    const id = identityRef.current;
+    if (!id) return null;
+    return id.decrypt_from_peer(senderX25519PubHex, encryptedHex);
+  }, []);
+
+  const ed25519PubToX25519Pub = useCallback((ed25519PubHex: string): string | null => {
+    const c = coreRef.current;
+    if (!c) return null;
+    return c.ed25519_pub_to_x25519_pub(ed25519PubHex);
+  }, []);
+
   const updateDisplayName = useCallback((newName: string) => {
     setDisplayName(newName);
     const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
@@ -116,14 +152,18 @@ export function useIdentity() {
   }, []);
 
   return {
-    displayName,
-    setDisplayName: updateDisplayName,
-    peerId,
-    signMessage,
-    verifySignature,
-    isReady,
-    isInitialized,
-    initializeWithDisplayName,
-    error,
-  };
+  displayName,
+  setDisplayName: updateDisplayName,
+  peerId,
+  signMessage,
+  verifySignature,
+  getX25519PublicKey,
+  encryptForPeer,
+  decryptFromPeer,
+  ed25519PubToX25519Pub,
+  isReady,
+  isInitialized,
+  initializeWithDisplayName,
+  error,
+};
 }

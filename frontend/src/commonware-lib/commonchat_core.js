@@ -1,7 +1,7 @@
 /* @ts-self-types="./commonchat_core.d.ts" */
 
 /**
- * Kimlik: Ed25519 public key + içeride private key (imza için).
+ * Identity: Ed25519 public key + private key (for signing).
  */
 export class CommonwareIdentity {
     static __wrap(ptr) {
@@ -22,7 +22,61 @@ export class CommonwareIdentity {
         wasm.__wbg_commonwareidentity_free(ptr, 0);
     }
     /**
-     * Private key'i hex string olarak dışa aktarır (localStorage için).
+     * @param {string} sender_x25519_pub_hex
+     * @param {string} encrypted_hex
+     * @returns {string}
+     */
+    decrypt_from_peer(sender_x25519_pub_hex, encrypted_hex) {
+        let deferred4_0;
+        let deferred4_1;
+        try {
+            const ptr0 = passStringToWasm0(sender_x25519_pub_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(encrypted_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.commonwareidentity_decrypt_from_peer(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var ptr3 = ret[0];
+            var len3 = ret[1];
+            if (ret[3]) {
+                ptr3 = 0; len3 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred4_0 = ptr3;
+            deferred4_1 = len3;
+            return getStringFromWasm0(ptr3, len3);
+        } finally {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        }
+    }
+    /**
+     * @param {string} recipient_x25519_pub_hex
+     * @param {string} plaintext
+     * @returns {string}
+     */
+    encrypt_for_peer(recipient_x25519_pub_hex, plaintext) {
+        let deferred4_0;
+        let deferred4_1;
+        try {
+            const ptr0 = passStringToWasm0(recipient_x25519_pub_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(plaintext, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.commonwareidentity_encrypt_for_peer(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var ptr3 = ret[0];
+            var len3 = ret[1];
+            if (ret[3]) {
+                ptr3 = 0; len3 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred4_0 = ptr3;
+            deferred4_1 = len3;
+            return getStringFromWasm0(ptr3, len3);
+        } finally {
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+        }
+    }
+    /**
+     * Exports the private key as a hex string (for localStorage).
      * @returns {string}
      */
     export_private_hex() {
@@ -30,6 +84,21 @@ export class CommonwareIdentity {
         let deferred1_1;
         try {
             const ret = wasm.commonwareidentity_export_private_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    get_x25519_public_key() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.commonwareidentity_get_x25519_public_key(this.__wbg_ptr);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -53,7 +122,7 @@ export class CommonwareIdentity {
         }
     }
     /**
-     * Mesajı Ed25519 ile imzalar; imza hex string olarak döner.
+     * Signs the message with Ed25519; returns the signature as a hex string.
      * @param {string} message
      * @returns {string}
      */
@@ -75,7 +144,7 @@ export class CommonwareIdentity {
 if (Symbol.dispose) CommonwareIdentity.prototype[Symbol.dispose] = CommonwareIdentity.prototype.free;
 
 /**
- * Yeni rastgele kimlik oluşturur.
+ * Creates a new random identity.
  * @returns {CommonwareIdentity}
  */
 export function create_identity() {
@@ -84,7 +153,33 @@ export function create_identity() {
 }
 
 /**
- * localStorage'tan okunan private key hex ile kimliği geri yükler.
+ * Converts any Ed25519 public key to its X25519 equivalent (Edwards → Montgomery).
+ * @param {string} ed25519_pub_hex
+ * @returns {string}
+ */
+export function ed25519_pub_to_x25519_pub(ed25519_pub_hex) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(ed25519_pub_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.ed25519_pub_to_x25519_pub(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Restores identity from private key hex (e.g. read from localStorage).
  * @param {string} hex_str
  * @returns {CommonwareIdentity}
  */
@@ -99,7 +194,7 @@ export function identity_from_private_hex(hex_str) {
 }
 
 /**
- * İmzayı doğrular: pub_key_hex ile message üzerindeki signature_hex geçerli mi?
+ * Verifies the signature: is signature_hex valid for message under pub_key_hex?
  * @param {string} pub_key_hex
  * @param {string} message
  * @param {string} signature_hex
